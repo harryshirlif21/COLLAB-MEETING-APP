@@ -1,0 +1,21 @@
+import process from 'process'
+import { Buffer } from 'buffer'
+
+// 🔥 Inject Node globals BEFORE anything else
+if (typeof global === 'undefined') {
+  window.global = window
+}
+
+window.process = process
+window.Buffer = Buffer
+
+// Now normal React imports
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './app.jsx'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+)
