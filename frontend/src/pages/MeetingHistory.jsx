@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-//const API = "http://localhost:5000";
-import { API_URL as API } from "../config.js";
+// ✅ No hardcoded URL import — using relative paths via Nginx proxy
 
 export default function MeetingHistory() {
   const navigate = useNavigate();
@@ -10,7 +9,7 @@ export default function MeetingHistory() {
   const [stats, setStats]       = useState({});
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState("");
-  const [filter, setFilter]     = useState("all"); // all | hosted | joined
+  const [filter, setFilter]     = useState("all");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -22,7 +21,8 @@ export default function MeetingHistory() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/api/logs/history`, {
+      // ✅ Relative path — Nginx proxies to backend
+      const res = await fetch("/api/logs/history", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load history");
@@ -70,7 +70,6 @@ export default function MeetingHistory() {
         .row-hover:hover { background: #f8fafc !important; }
       `}</style>
 
-      {/* Sidebar */}
       <aside style={s.sidebar}>
         <div style={s.logo}>
           <span style={{ fontSize: "1.5rem", color: "#6C63FF" }}>⬡</span>
@@ -93,49 +92,33 @@ export default function MeetingHistory() {
         </div>
       </aside>
 
-      {/* Main */}
       <main style={s.main}>
         <div style={s.pageHeader}>
           <h1 style={s.pageTitle}>Meeting History</h1>
           <p style={s.pageSubtitle}>Your complete meeting activity log</p>
         </div>
 
-        {/* Summary cards */}
         <div style={s.summaryGrid}>
           {summaryCards.map((card, i) => (
             <div key={i} style={{ ...s.summaryCard, animationDelay: `${i * 0.07}s` }}>
-              <div style={{ ...s.summaryIcon, background: card.bg, color: card.color }}>
-                {card.icon}
-              </div>
+              <div style={{ ...s.summaryIcon, background: card.bg, color: card.color }}>{card.icon}</div>
               <div style={s.summaryValue}>{card.value}</div>
               <div style={s.summaryLabel}>{card.label}</div>
             </div>
           ))}
         </div>
 
-        {/* Table */}
         <div style={s.tableCard}>
           <div style={s.tableHeader}>
             <h2 style={s.tableTitle}>
               {filter === "all" ? "All Meetings" : filter === "hosted" ? "Meetings I Hosted" : "Meetings I Joined"}
               <span style={s.countBadge}>{filtered.length}</span>
             </h2>
-            <button onClick={() => fetchHistory(localStorage.getItem("token"))} style={s.refreshBtn}>
-              ↻ Refresh
-            </button>
+            <button onClick={() => fetchHistory(localStorage.getItem("token"))} style={s.refreshBtn}>↻ Refresh</button>
           </div>
 
-          {loading && (
-            <div style={s.emptyState}>
-              <div style={{ fontSize: "2rem", marginBottom: "10px", animation: "spin 1s linear infinite" }}>⌛</div>
-              Loading history…
-            </div>
-          )}
-
-          {error && (
-            <div style={s.errorBox}>{error}</div>
-          )}
-
+          {loading && <div style={s.emptyState}><div style={{ fontSize: "2rem", marginBottom: "10px" }}>⌛</div>Loading history…</div>}
+          {error   && <div style={s.errorBox}>{error}</div>}
           {!loading && !error && filtered.length === 0 && (
             <div style={s.emptyState}>
               <div style={{ fontSize: "3rem", marginBottom: "12px" }}>📭</div>
@@ -160,31 +143,13 @@ export default function MeetingHistory() {
               <tbody>
                 {filtered.map((m, i) => (
                   <tr key={i} className="row-hover" style={{ ...s.tr, animationDelay: `${i * 0.04}s` }}>
-                    <td style={s.td}>
-                      <div style={s.meetingName}>{m.title}</div>
-                      <div style={s.meetingCode}>{m.meeting_code}</div>
-                    </td>
-                    <td style={s.td}>
-                      <div style={s.tdMain}>{formatDate(m.meeting_date)}</div>
-                      <div style={s.tdSub}>{m.start_time?.slice(0, 5)} – {m.end_time?.slice(0, 5)}</div>
-                    </td>
-                    <td style={s.td}>
-                      <span style={s.durationChip}>{formatDuration(m.duration_minutes)}</span>
-                    </td>
-                    <td style={s.td}>
-                      <span style={s.numChip}>{m.message_count ?? 0}</span>
-                    </td>
-                    <td style={s.td}>
-                      <span style={s.numChip}>{m.file_count ?? 0}</span>
-                    </td>
-                    <td style={s.td}>
-                      <span style={{ ...s.roleBadge, ...(m.isHost ? s.hostBadge : s.joinedBadge) }}>
-                        {m.isHost ? "👑 Host" : "👤 Member"}
-                      </span>
-                    </td>
-                    <td style={s.td}>
-                      <span style={s.numChip}>{m.participant_count ?? 1}</span>
-                    </td>
+                    <td style={s.td}><div style={s.meetingName}>{m.title}</div><div style={s.meetingCode}>{m.meeting_code}</div></td>
+                    <td style={s.td}><div style={s.tdMain}>{formatDate(m.meeting_date)}</div><div style={s.tdSub}>{m.start_time?.slice(0, 5)} – {m.end_time?.slice(0, 5)}</div></td>
+                    <td style={s.td}><span style={s.durationChip}>{formatDuration(m.duration_minutes)}</span></td>
+                    <td style={s.td}><span style={s.numChip}>{m.message_count ?? 0}</span></td>
+                    <td style={s.td}><span style={s.numChip}>{m.file_count ?? 0}</span></td>
+                    <td style={s.td}><span style={{ ...s.roleBadge, ...(m.isHost ? s.hostBadge : s.joinedBadge) }}>{m.isHost ? "👑 Host" : "👤 Member"}</span></td>
+                    <td style={s.td}><span style={s.numChip}>{m.participant_count ?? 1}</span></td>
                   </tr>
                 ))}
               </tbody>

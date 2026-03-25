@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import io from "socket.io-client";
 
-// ✅ Auto-detect IP — works regardless of which network you're on
-const SOCKET_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
+// ✅ No hardcoded URL — socket.io-client connects to same origin automatically
+// Nginx proxies /socket.io/ requests to the backend
 
 const fmt = (s) => (s < 10 ? `0${s}` : `${s}`);
 const REACTIONS = ["👍", "👏", "❤️", "😂", "😮", "🔥"];
@@ -65,38 +65,19 @@ export default function MeetingRoom() {
     return () => window.removeEventListener("resize", handler);
   }, []);
 
-  /* ══════════════════════════════════════════════════════════
-     WebRTC — TURN servers + ICE logging
-  ══════════════════════════════════════════════════════════ */
   const createPeerConnection = useCallback((userId) => {
     const peer = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
-        {
-          urls: "turn:openrelay.metered.ca:80",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
-        {
-          urls: "turn:openrelay.metered.ca:443",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
-        {
-          urls: "turn:openrelay.metered.ca:443?transport=tcp",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
+        { urls: "turn:openrelay.metered.ca:80",  username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
       ],
     });
 
-    peer.oniceconnectionstatechange = () => {
-      console.log(`[ICE] ${userId.slice(0,8)}: ${peer.iceConnectionState}`);
-    };
-    peer.onconnectionstatechange = () => {
-      console.log(`[PEER] ${userId.slice(0,8)}: ${peer.connectionState}`);
-    };
+    peer.oniceconnectionstatechange = () => console.log(`[ICE] ${userId.slice(0,8)}: ${peer.iceConnectionState}`);
+    peer.onconnectionstatechange    = () => console.log(`[PEER] ${userId.slice(0,8)}: ${peer.connectionState}`);
 
     peer.onicecandidate = (e) => {
       if (e.candidate)
@@ -108,16 +89,10 @@ export default function MeetingRoom() {
       setRemoteStreams((prev) => ({ ...prev, [userId]: e.streams[0] }));
     };
 
-    localStreamRef.current?.getTracks().forEach((t) =>
-      peer.addTrack(t, localStreamRef.current)
-    );
-
+    localStreamRef.current?.getTracks().forEach((t) => peer.addTrack(t, localStreamRef.current));
     return peer;
   }, []);
 
-  /* ══════════════════════════════════════════════════════════
-     Main effect — socket + media
-  ══════════════════════════════════════════════════════════ */
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) { navigate("/login"); return; }
@@ -127,10 +102,11 @@ export default function MeetingRoom() {
       if (socketRef.current) socketRef.current._host_id = payload.id;
     } catch {}
 
-    const socket = io(SOCKET_URL, { auth: { token } });
+    // ✅ Connect to same origin — Nginx proxies /socket.io/ to backend:5000
+    const socket = io({ auth: { token } });
     socketRef.current = socket;
 
-    socket.on("connect", () => console.log("[SOCKET] Connected:", socket.id, "→", SOCKET_URL));
+    socket.on("connect",       () => console.log("[SOCKET] Connected:", socket.id));
     socket.on("connect_error", (err) => {
       console.error("[SOCKET] connect_error:", err.message);
       setConnectionStatus(`Failed: ${err.message}`);
@@ -142,7 +118,6 @@ export default function MeetingRoom() {
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
         socket.emit("join-meeting", code);
         setConnectionStatus("Connected");
-        console.log("[MEDIA] Local stream obtained, joined room:", code);
       })
       .catch((err) => {
         console.warn("[MEDIA] getUserMedia failed:", err.message);
@@ -158,51 +133,34 @@ export default function MeetingRoom() {
       } catch {}
     });
 
-    socket.on("meeting-users", (users) => {
-      console.log("[SOCKET] Existing users in room:", users);
-      setParticipants(users);
-    });
+    socket.on("meeting-users", (users) => { setParticipants(users); });
 
     socket.on("user-joined", async (userId) => {
-      console.log("[SOCKET] user-joined:", userId);
       const peer = createPeerConnection(userId);
       peersRef.current[userId] = peer;
       try {
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
         socket.emit("signal", { to: userId, offer });
-        console.log("[WebRTC] Sent offer to:", userId.slice(0,8));
       } catch (e) { console.error("[WebRTC] offer error:", e); }
     });
 
     socket.on("signal", async ({ from, offer, answer, candidate }) => {
       let peer = peersRef.current[from];
-      if (!peer) {
-        console.log("[WebRTC] Creating peer for incoming signal from:", from.slice(0,8));
-        peer = createPeerConnection(from);
-        peersRef.current[from] = peer;
-      }
+      if (!peer) { peer = createPeerConnection(from); peersRef.current[from] = peer; }
       try {
         if (offer) {
-          console.log("[WebRTC] Received offer from:", from.slice(0,8));
           await peer.setRemoteDescription(new RTCSessionDescription(offer));
           const ans = await peer.createAnswer();
           await peer.setLocalDescription(ans);
           socket.emit("signal", { to: from, answer: ans });
-          console.log("[WebRTC] Sent answer to:", from.slice(0,8));
         }
-        if (answer) {
-          console.log("[WebRTC] Received answer from:", from.slice(0,8));
-          await peer.setRemoteDescription(new RTCSessionDescription(answer));
-        }
-        if (candidate && peer.remoteDescription) {
-          await peer.addIceCandidate(new RTCIceCandidate(candidate));
-        }
+        if (answer) await peer.setRemoteDescription(new RTCSessionDescription(answer));
+        if (candidate && peer.remoteDescription) await peer.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) { console.error("[WebRTC] signal error:", e); }
     });
 
     socket.on("user-left", (userId) => {
-      console.log("[SOCKET] user-left:", userId);
       peersRef.current[userId]?.close();
       delete peersRef.current[userId];
       setRemoteStreams((p) => { const u = { ...p }; delete u[userId]; return u; });
@@ -210,34 +168,24 @@ export default function MeetingRoom() {
       setRaisedHands((p) => { const u = new Set(p); u.delete(userId); return u; });
     });
 
-    socket.on("chat-message", (msg) => {
-      setMessages((p) => [...p, msg]);
-      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-    });
-
+    socket.on("chat-message",       (msg)          => { setMessages((p) => [...p, msg]); setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50); });
     socket.on("screen-share-started", ({ userId }) => setRemoteScreen({ userId }));
-    socket.on("screen-share-stopped", () => setRemoteScreen(null));
-
-    socket.on("slide-update", ({ slides: s, index }) => {
-      setSlides(s); setSlideIndex(index); setShowSlides(true);
-    });
-    socket.on("slide-navigate", ({ index }) => setSlideIndex(index));
-    socket.on("slides-closed",  () => setShowSlides(false));
-
-    socket.on("hand-raised",  ({ userId }) => setRaisedHands((p) => new Set([...p, userId])));
-    socket.on("hand-lowered", ({ userId }) => setRaisedHands((p) => { const u = new Set(p); u.delete(userId); return u; }));
-
-    socket.on("reaction", ({ emoji }) => {
+    socket.on("screen-share-stopped", ()           => setRemoteScreen(null));
+    socket.on("slide-update",       ({ slides: s, index }) => { setSlides(s); setSlideIndex(index); setShowSlides(true); });
+    socket.on("slide-navigate",     ({ index })    => setSlideIndex(index));
+    socket.on("slides-closed",      ()             => setShowSlides(false));
+    socket.on("hand-raised",        ({ userId })   => setRaisedHands((p) => new Set([...p, userId])));
+    socket.on("hand-lowered",       ({ userId })   => setRaisedHands((p) => { const u = new Set(p); u.delete(userId); return u; }));
+    socket.on("reaction",           ({ emoji })    => {
       const id = Date.now() + Math.random();
       const x  = 10 + Math.random() * 80;
       setReactions((p) => [...p, { id, emoji, x }]);
       setTimeout(() => setReactions((p) => p.filter((r) => r.id !== id)), 2500);
     });
-
     socket.on("breakout-rooms-created",  ({ rooms, duration }) => { setBreakoutRooms(rooms); setBreakoutTimer(duration * 60); setShowBreakout(true); });
-    socket.on("breakout-join-ack",       ({ roomId }) => setMyBreakoutRoom(roomId));
-    socket.on("breakout-ended",          ()           => { setMyBreakoutRoom(null); setShowBreakout(false); setBreakoutRooms([]); });
-    socket.on("breakout-rooms-update",   ({ rooms })  => setBreakoutRooms(rooms));
+    socket.on("breakout-join-ack",       ({ roomId })          => setMyBreakoutRoom(roomId));
+    socket.on("breakout-ended",          ()                    => { setMyBreakoutRoom(null); setShowBreakout(false); setBreakoutRooms([]); });
+    socket.on("breakout-rooms-update",   ({ rooms })           => setBreakoutRooms(rooms));
 
     return () => {
       socket.disconnect();
@@ -247,14 +195,9 @@ export default function MeetingRoom() {
     };
   }, [code, navigate, createPeerConnection]);
 
-  /* ══════════════════════════════════════════════════════════
-     Timers
-  ══════════════════════════════════════════════════════════ */
   useEffect(() => {
     if (breakoutTimer <= 0) return;
-    const t = setInterval(() => {
-      setBreakoutTimer((s) => { if (s <= 1) { clearInterval(t); return 0; } return s - 1; });
-    }, 1000);
+    const t = setInterval(() => setBreakoutTimer((s) => { if (s <= 1) { clearInterval(t); return 0; } return s - 1; }), 1000);
     return () => clearInterval(t);
   }, [breakoutTimer]);
 
@@ -264,17 +207,8 @@ export default function MeetingRoom() {
     return () => clearInterval(t);
   }, [isRecording]);
 
-  /* ══════════════════════════════════════════════════════════
-     Feature handlers
-  ══════════════════════════════════════════════════════════ */
-  const toggleMic = () => {
-    const t = localStreamRef.current?.getAudioTracks()[0];
-    if (t) { t.enabled = !micEnabled; setMicEnabled((v) => !v); }
-  };
-  const toggleCamera = () => {
-    const t = localStreamRef.current?.getVideoTracks()[0];
-    if (t) { t.enabled = !cameraEnabled; setCameraEnabled((v) => !v); }
-  };
+  const toggleMic    = () => { const t = localStreamRef.current?.getAudioTracks()[0]; if (t) { t.enabled = !micEnabled;    setMicEnabled((v) => !v); } };
+  const toggleCamera = () => { const t = localStreamRef.current?.getVideoTracks()[0]; if (t) { t.enabled = !cameraEnabled; setCameraEnabled((v) => !v); } };
 
   const startScreenShare = async () => {
     try {
@@ -296,12 +230,7 @@ export default function MeetingRoom() {
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
     const camTrack = localStreamRef.current?.getVideoTracks()[0];
-    if (camTrack) {
-      Object.values(peersRef.current).forEach((peer) => {
-        const sender = peer.getSenders().find((s) => s.track?.kind === "video");
-        sender?.replaceTrack(camTrack);
-      });
-    }
+    if (camTrack) Object.values(peersRef.current).forEach((peer) => { const sender = peer.getSenders().find((s) => s.track?.kind === "video"); sender?.replaceTrack(camTrack); });
     setIsSharingScreen(false);
     socketRef.current?.emit("screen-share-stopped", { code });
   };
@@ -324,14 +253,9 @@ export default function MeetingRoom() {
     socketRef.current?.emit("slide-navigate", { code, index: next });
   };
 
-  const closeSlides = () => {
-    setShowSlides(false);
-    socketRef.current?.emit("slides-closed", { code });
-  };
-
+  const closeSlides    = () => { setShowSlides(false); socketRef.current?.emit("slides-closed", { code }); };
   const startRecording = () => {
-    const stream = localStreamRef.current;
-    if (!stream) return;
+    const stream = localStreamRef.current; if (!stream) return;
     recordChunksRef.current = [];
     const mr = new MediaRecorder(stream);
     mr.ondataavailable = (e) => { if (e.data.size > 0) recordChunksRef.current.push(e.data); };
@@ -342,32 +266,14 @@ export default function MeetingRoom() {
       a.href = url; a.download = `meeting-${code}-${Date.now()}.webm`; a.click();
       URL.revokeObjectURL(url);
     };
-    mr.start();
-    mediaRecorderRef.current = mr;
-    setIsRecording(true); setRecSeconds(0);
+    mr.start(); mediaRecorderRef.current = mr; setIsRecording(true); setRecSeconds(0);
   };
 
-  const stopRecording = () => { mediaRecorderRef.current?.stop(); setIsRecording(false); };
-
-  const toggleHand = () => {
-    const next = !handRaised;
-    setHandRaised(next);
-    socketRef.current?.emit(next ? "raise-hand" : "lower-hand", { code });
-  };
-
-  const sendReaction = (emoji) => socketRef.current?.emit("reaction", { code, emoji });
-
-  const sendMessage = () => {
-    if (!messageInput.trim()) return;
-    socketRef.current?.emit("chat-message", { code, text: messageInput, timestamp: new Date().toISOString() });
-    setMessageInput("");
-  };
-
-  const createBreakoutRooms = () => {
-    const n = Math.max(2, Math.min(10, numRooms));
-    socketRef.current?.emit("create-breakout-rooms", { code, numRooms: n, duration: breakoutDuration });
-  };
-
+  const stopRecording  = () => { mediaRecorderRef.current?.stop(); setIsRecording(false); };
+  const toggleHand     = () => { const next = !handRaised; setHandRaised(next); socketRef.current?.emit(next ? "raise-hand" : "lower-hand", { code }); };
+  const sendReaction   = (emoji) => socketRef.current?.emit("reaction", { code, emoji });
+  const sendMessage    = () => { if (!messageInput.trim()) return; socketRef.current?.emit("chat-message", { code, text: messageInput, timestamp: new Date().toISOString() }); setMessageInput(""); };
+  const createBreakoutRooms = () => { const n = Math.max(2, Math.min(10, numRooms)); socketRef.current?.emit("create-breakout-rooms", { code, numRooms: n, duration: breakoutDuration }); };
   const joinBreakoutRoom = () => {
     const n = parseInt(breakoutInput, 10);
     if (!n || n < 1 || n > breakoutRooms.length) return alert(`Enter a room number between 1 and ${breakoutRooms.length}`);
@@ -375,7 +281,6 @@ export default function MeetingRoom() {
     socketRef.current?.emit("join-breakout-room", { code, roomId: room.id });
     setMyBreakoutRoom(room.id);
   };
-
   const endBreakoutRooms = () => socketRef.current?.emit("end-breakout-rooms", { code });
 
   const leaveMeeting = () => {
@@ -387,9 +292,6 @@ export default function MeetingRoom() {
     navigate("/dashboard");
   };
 
-  /* ══════════════════════════════════════════════════════════
-     Styles
-  ══════════════════════════════════════════════════════════ */
   const styles = {
     root:        { minHeight: "100vh", background: "#0f1117", color: "#e8eaf0", fontFamily: "'DM Sans', sans-serif", padding: "0" },
     topBar:      { display: "flex", alignItems: "center", justifyContent: "space-between", padding: mobile ? "10px 14px" : "14px 24px", background: "#16181f", borderBottom: "1px solid #23262f" },
@@ -404,12 +306,7 @@ export default function MeetingRoom() {
     videoLabel:  { position: "absolute", bottom: "8px", left: "10px", background: "rgba(0,0,0,0.65)", padding: "3px 10px", borderRadius: "20px", fontSize: "0.75rem", fontWeight: 600 },
     handBadge:   { position: "absolute", top: "8px", right: "10px", fontSize: "1.2rem" },
     controls:    { display: "flex", gap: "8px", flexWrap: "wrap", padding: "0 0 4px" },
-    btn:         (color, active) => ({
-                   padding: mobile ? "8px 12px" : "9px 18px", borderRadius: "8px", border: "none", cursor: "pointer",
-                   fontWeight: 600, fontSize: mobile ? "0.78rem" : "0.85rem", transition: "all 0.15s",
-                   background: active === false ? "#2d3044" : color,
-                   color: active === false ? "#6b7280" : "#fff",
-                 }),
+    btn:         (color, active) => ({ padding: mobile ? "8px 12px" : "9px 18px", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: 600, fontSize: mobile ? "0.78rem" : "0.85rem", transition: "all 0.15s", background: active === false ? "#2d3044" : color, color: active === false ? "#6b7280" : "#fff" }),
     leaveBtn:    { padding: mobile ? "8px 12px" : "9px 18px", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: 700, fontSize: mobile ? "0.78rem" : "0.85rem", background: "#dc2626", color: "#fff" },
     recBadge:    { display: "flex", alignItems: "center", gap: "6px", background: "#1a1d27", padding: "6px 14px", borderRadius: "8px", fontSize: "0.82rem", color: "#f87171", fontWeight: 700 },
     sidebar:     { background: "#16181f", borderLeft: "1px solid #23262f", display: mobile ? (showSidebar ? "flex" : "none") : "flex", flexDirection: "column", ...(mobile && showSidebar ? { position: "fixed", inset: 0, zIndex: 100 } : {}) },
@@ -440,11 +337,8 @@ export default function MeetingRoom() {
         ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:#16181f} ::-webkit-scrollbar-thumb{background:#2d3044;border-radius:4px}
       `}</style>
 
-      {reactions.map((r) => (
-        <div key={r.id} style={styles.floatEmoji(r.x)}>{r.emoji}</div>
-      ))}
+      {reactions.map((r) => <div key={r.id} style={styles.floatEmoji(r.x)}>{r.emoji}</div>)}
 
-      {/* ── top bar ── */}
       <div style={styles.topBar}>
         <div style={styles.topLeft}>
           <span style={styles.topTitle}>📹 {code}</span>
@@ -461,12 +355,9 @@ export default function MeetingRoom() {
         </div>
       </div>
 
-      {/* ── main grid ── */}
       <div style={styles.mainGrid}>
         <div style={styles.videoArea}>
-          {mediaError && (
-            <div style={{ background: "#78350f", padding: "10px 16px", borderRadius: "8px", fontSize: "0.85rem" }}>⚠️ {mediaError}</div>
-          )}
+          {mediaError && <div style={{ background: "#78350f", padding: "10px 16px", borderRadius: "8px", fontSize: "0.85rem" }}>⚠️ {mediaError}</div>}
 
           <div style={styles.videoGrid}>
             <div style={styles.videoCard}>
@@ -475,8 +366,7 @@ export default function MeetingRoom() {
             </div>
             {Object.entries(remoteStreams).map(([id, stream]) => (
               <div key={id} style={styles.videoCard}>
-                <video autoPlay playsInline style={styles.videoEl}
-                  ref={(v) => { if (v && v.srcObject !== stream) v.srcObject = stream; }} />
+                <video autoPlay playsInline style={styles.videoEl} ref={(v) => { if (v && v.srcObject !== stream) v.srcObject = stream; }} />
                 <span style={styles.videoLabel}>{id.slice(0, 8)}</span>
                 {raisedHands.has(id) && <span style={styles.handBadge}>✋</span>}
               </div>
@@ -492,34 +382,25 @@ export default function MeetingRoom() {
           <div style={styles.controls}>
             <button onClick={toggleMic}    style={styles.btn("#4f46e5", micEnabled)}>   {micEnabled    ? "🎤 Mic"  : "🔇 Muted"}</button>
             <button onClick={toggleCamera} style={styles.btn("#4f46e5", cameraEnabled)}>{cameraEnabled ? "📷 Cam"  : "🚫 Off"}</button>
-            {!isSharingScreen
-              ? <button onClick={startScreenShare} style={styles.btn("#0891b2")}>🖥️ Share</button>
-              : <button onClick={stopScreenShare}  style={styles.btn("#dc2626")}>⏹ Stop</button>
-            }
+            {!isSharingScreen ? <button onClick={startScreenShare} style={styles.btn("#0891b2")}>🖥️ Share</button>
+                              : <button onClick={stopScreenShare}  style={styles.btn("#dc2626")}>⏹ Stop</button>}
             {isHost && !isRecording && <button onClick={startRecording} style={styles.btn("#7c3aed")}>⏺ Rec</button>}
             {isHost &&  isRecording && <button onClick={stopRecording}  style={styles.btn("#dc2626")}>⏹ Save</button>}
-            <button onClick={toggleHand} style={styles.btn(handRaised ? "#d97706" : "#374151")}>
-              {handRaised ? "✋ Lower" : "✋ Hand"}
-            </button>
+            <button onClick={toggleHand} style={styles.btn(handRaised ? "#d97706" : "#374151")}>{handRaised ? "✋ Lower" : "✋ Hand"}</button>
             {isHost && (
               <label style={{ ...styles.btn("#065f46"), display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
                 📂 Files
                 <input type="file" accept="image/*,.pdf" multiple onChange={handleFileUpload} style={{ display: "none" }} />
               </label>
             )}
-            {isHost && (
-              <button onClick={() => setShowBreakout(true)} style={styles.btn("#9333ea")}>🏠 Breakout</button>
-            )}
+            {isHost && <button onClick={() => setShowBreakout(true)} style={styles.btn("#9333ea")}>🏠 Breakout</button>}
           </div>
 
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {REACTIONS.map((emoji) => (
-              <button key={emoji} onClick={() => sendReaction(emoji)} style={styles.reactionBtn}>{emoji}</button>
-            ))}
+            {REACTIONS.map((emoji) => <button key={emoji} onClick={() => sendReaction(emoji)} style={styles.reactionBtn}>{emoji}</button>)}
           </div>
         </div>
 
-        {/* ── sidebar ── */}
         <div style={styles.sidebar}>
           {mobile && (
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #23262f" }}>
@@ -539,23 +420,15 @@ export default function MeetingRoom() {
             {activeTab === "chat" && (
               <>
                 {messages.length === 0 && <p style={{ color: "#4b5563", fontSize: "0.85rem" }}>No messages yet.</p>}
-                {messages.map((m, i) => (
-                  <div key={i} style={styles.chatMsg}>
-                    <span style={styles.chatSender}>{m.sender}</span>{m.text}
-                  </div>
-                ))}
+                {messages.map((m, i) => <div key={i} style={styles.chatMsg}><span style={styles.chatSender}>{m.sender}</span>{m.text}</div>)}
                 <div ref={chatEndRef} />
               </>
             )}
             {activeTab === "participants" && (
               <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                <li style={{ padding: "8px 0", fontSize: "0.88rem", color: "#4ade80", borderBottom: "1px solid #23262f" }}>
-                  👤 You {isHost ? "👑" : ""} {handRaised ? "✋" : ""}
-                </li>
+                <li style={{ padding: "8px 0", fontSize: "0.88rem", color: "#4ade80", borderBottom: "1px solid #23262f" }}>👤 You {isHost ? "👑" : ""} {handRaised ? "✋" : ""}</li>
                 {participants.map((id) => (
-                  <li key={id} style={{ padding: "8px 0", fontSize: "0.88rem", color: "#d1d5db", borderBottom: "1px solid #1f2937" }}>
-                    👤 {id.slice(0, 12)}… {raisedHands.has(id) ? "✋" : ""}
-                  </li>
+                  <li key={id} style={{ padding: "8px 0", fontSize: "0.88rem", color: "#d1d5db", borderBottom: "1px solid #1f2937" }}>👤 {id.slice(0, 12)}… {raisedHands.has(id) ? "✋" : ""}</li>
                 ))}
               </ul>
             )}
@@ -563,12 +436,7 @@ export default function MeetingRoom() {
               <div>
                 {slides.length === 0
                   ? <p style={{ color: "#4b5563", fontSize: "0.85rem" }}>{isHost ? "Use Share Files to present." : "No files shared yet."}</p>
-                  : (
-                    <div>
-                      <p style={{ fontSize: "0.85rem", color: "#9ca3af", marginBottom: "12px" }}>{slides.length} file(s) · Slide {slideIndex + 1}/{slides.length}</p>
-                      <button onClick={() => setShowSlides(true)} style={styles.btn("#4f46e5")}>▶ View</button>
-                    </div>
-                  )
+                  : <div><p style={{ fontSize: "0.85rem", color: "#9ca3af", marginBottom: "12px" }}>{slides.length} file(s) · Slide {slideIndex + 1}/{slides.length}</p><button onClick={() => setShowSlides(true)} style={styles.btn("#4f46e5")}>▶ View</button></div>
                 }
               </div>
             )}
@@ -576,66 +444,40 @@ export default function MeetingRoom() {
 
           {activeTab === "chat" && (
             <div style={styles.chatInput}>
-              <input
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                placeholder="Type a message…"
-                style={styles.input}
-              />
+              <input value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendMessage()} placeholder="Type a message…" style={styles.input} />
               <button onClick={sendMessage} style={styles.sendBtn}>→</button>
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Mobile FAB ── */}
       {mobile && !showSidebar && (
         <button style={styles.chatFab} onClick={() => setShowSidebar(true)}>
           💬
-          {messages.length > 0 && (
-            <span style={{ position: "absolute", top: 2, right: 2, background: "#ef4444", borderRadius: "50%", width: 16, height: 16, fontSize: "0.65rem", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
-              {messages.length > 9 ? "9+" : messages.length}
-            </span>
-          )}
+          {messages.length > 0 && <span style={{ position: "absolute", top: 2, right: 2, background: "#ef4444", borderRadius: "50%", width: 16, height: 16, fontSize: "0.65rem", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{messages.length > 9 ? "9+" : messages.length}</span>}
         </button>
       )}
 
-      {/* ══ SLIDE VIEWER ══ */}
       {showSlides && slides.length > 0 && (
         <div style={styles.slideBox}>
-          <img src={slides[slideIndex]} alt={`Slide ${slideIndex + 1}`}
-            style={{ maxWidth: "90vw", maxHeight: "80vh", objectFit: "contain", borderRadius: "8px" }} />
+          <img src={slides[slideIndex]} alt={`Slide ${slideIndex + 1}`} style={{ maxWidth: "90vw", maxHeight: "80vh", objectFit: "contain", borderRadius: "8px" }} />
           <div style={{ display: "flex", gap: "16px", marginTop: "20px", alignItems: "center" }}>
-            <button onClick={() => navigateSlide(-1)} disabled={slideIndex === 0}
-              style={{ ...styles.btn("#4f46e5"), opacity: slideIndex === 0 ? 0.4 : 1 }}>← Prev</button>
+            <button onClick={() => navigateSlide(-1)} disabled={slideIndex === 0} style={{ ...styles.btn("#4f46e5"), opacity: slideIndex === 0 ? 0.4 : 1 }}>← Prev</button>
             <span style={{ fontSize: "0.9rem", color: "#9ca3af" }}>{slideIndex + 1} / {slides.length}</span>
-            <button onClick={() => navigateSlide(1)} disabled={slideIndex === slides.length - 1}
-              style={{ ...styles.btn("#4f46e5"), opacity: slideIndex === slides.length - 1 ? 0.4 : 1 }}>Next →</button>
+            <button onClick={() => navigateSlide(1)} disabled={slideIndex === slides.length - 1} style={{ ...styles.btn("#4f46e5"), opacity: slideIndex === slides.length - 1 ? 0.4 : 1 }}>Next →</button>
             {isHost && <button onClick={closeSlides} style={styles.btn("#dc2626")}>✕ Close</button>}
           </div>
         </div>
       )}
 
-      {/* ══ BREAKOUT ROOMS MODAL ══ */}
       {showBreakout && (
         <div style={styles.modal}>
           <div style={styles.modalBox}>
             <h2 style={styles.modalTitle}>🏠 Breakout Rooms</h2>
             {isHost && breakoutRooms.length === 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div>
-                  <label style={{ fontSize: "0.85rem", color: "#9ca3af" }}>Number of rooms (2–10)</label>
-                  <input type="number" min={2} max={10} value={numRooms}
-                    onChange={(e) => setNumRooms(Number(e.target.value))}
-                    style={{ ...styles.input, display: "block", marginTop: "6px", width: "100px" }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: "0.85rem", color: "#9ca3af" }}>Duration (minutes)</label>
-                  <input type="number" min={1} max={60} value={breakoutDuration}
-                    onChange={(e) => setBreakoutDuration(Number(e.target.value))}
-                    style={{ ...styles.input, display: "block", marginTop: "6px", width: "100px" }} />
-                </div>
+                <div><label style={{ fontSize: "0.85rem", color: "#9ca3af" }}>Number of rooms (2–10)</label><input type="number" min={2} max={10} value={numRooms} onChange={(e) => setNumRooms(Number(e.target.value))} style={{ ...styles.input, display: "block", marginTop: "6px", width: "100px" }} /></div>
+                <div><label style={{ fontSize: "0.85rem", color: "#9ca3af" }}>Duration (minutes)</label><input type="number" min={1} max={60} value={breakoutDuration} onChange={(e) => setBreakoutDuration(Number(e.target.value))} style={{ ...styles.input, display: "block", marginTop: "6px", width: "100px" }} /></div>
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button onClick={createBreakoutRooms} style={styles.btn("#9333ea")}>Create Rooms</button>
                   <button onClick={() => setShowBreakout(false)} style={styles.btn("#374151")}>Cancel</button>
@@ -644,11 +486,7 @@ export default function MeetingRoom() {
             )}
             {breakoutRooms.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {breakoutTimer > 0 && (
-                  <div style={{ fontSize: "0.9rem", color: "#fbbf24", fontWeight: 700 }}>
-                    ⏱ {fmt(Math.floor(breakoutTimer / 60))}:{fmt(breakoutTimer % 60)} remaining
-                  </div>
-                )}
+                {breakoutTimer > 0 && <div style={{ fontSize: "0.9rem", color: "#fbbf24", fontWeight: 700 }}>⏱ {fmt(Math.floor(breakoutTimer / 60))}:{fmt(breakoutTimer % 60)} remaining</div>}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                   {breakoutRooms.map((room, i) => (
                     <div key={room.id} style={{ background: myBreakoutRoom === room.id ? "#312e81" : "#23262f", borderRadius: "10px", padding: "12px", fontSize: "0.85rem" }}>
@@ -659,16 +497,11 @@ export default function MeetingRoom() {
                 </div>
                 {!isHost && !myBreakoutRoom && (
                   <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <input type="number" min={1} max={breakoutRooms.length} value={breakoutInput}
-                      onChange={(e) => setBreakoutInput(e.target.value)}
-                      placeholder={`Room # (1–${breakoutRooms.length})`}
-                      style={{ ...styles.input, width: "160px" }} />
+                    <input type="number" min={1} max={breakoutRooms.length} value={breakoutInput} onChange={(e) => setBreakoutInput(e.target.value)} placeholder={`Room # (1–${breakoutRooms.length})`} style={{ ...styles.input, width: "160px" }} />
                     <button onClick={joinBreakoutRoom} style={styles.btn("#9333ea")}>Join</button>
                   </div>
                 )}
-                {myBreakoutRoom && !isHost && (
-                  <p style={{ color: "#4ade80", fontSize: "0.88rem" }}>✅ Room {breakoutRooms.findIndex(r => r.id === myBreakoutRoom) + 1}</p>
-                )}
+                {myBreakoutRoom && !isHost && <p style={{ color: "#4ade80", fontSize: "0.88rem" }}>✅ Room {breakoutRooms.findIndex(r => r.id === myBreakoutRoom) + 1}</p>}
                 <div style={{ display: "flex", gap: "10px" }}>
                   {isHost && <button onClick={endBreakoutRooms} style={styles.btn("#dc2626")}>End All</button>}
                   <button onClick={() => setShowBreakout(false)} style={styles.btn("#374151")}>Close</button>

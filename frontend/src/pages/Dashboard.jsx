@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
-import { API_URL as API } from "../config.js";
 
+// ✅ No hardcoded URL — socket connects to same origin, Nginx proxies /socket.io/
 function Dashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -18,9 +18,6 @@ function Dashboard() {
   const [stats, setStats] = useState({ meetings: 0, hours: 0, messages: 0, files: 0 });
   const socketRef = useRef(null);
 
-  // -------------------------------
-  // Fetch user info + connect socket
-  // -------------------------------
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) { navigate("/login"); return; }
@@ -32,12 +29,10 @@ function Dashboard() {
 
     fetchStats(token);
 
-    // Connect Socket.IO for real-time updates
-    socketRef.current = io(API, {
+    // ✅ Connect to same origin — Nginx proxies /socket.io/ to backend
+    socketRef.current = io({
       auth: { token },
       transports: ["websocket"],
-      secure: true,
-      rejectUnauthorized: false, // allow self-signed cert
     });
 
     socketRef.current.on("connect", () => console.log("[SOCKET] Connected:", socketRef.current.id));
@@ -46,12 +41,10 @@ function Dashboard() {
     return () => socketRef.current.disconnect();
   }, [navigate]);
 
-  // -------------------------------
-  // Fetch dashboard stats
-  // -------------------------------
   const fetchStats = async (token) => {
     try {
-      const res = await fetch(`${API}/api/logs/stats`, {
+      // ✅ Relative path — Nginx proxies /api/* to backend
+      const res = await fetch("/api/logs/stats", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -63,9 +56,6 @@ function Dashboard() {
     }
   };
 
-  // -------------------------------
-  // Create a new meeting
-  // -------------------------------
   const handleCreateMeeting = async () => {
     if (!meetingTitle || !meetingDate || !startTime || !endTime) {
       setMeetingError("Please fill in all fields");
@@ -77,7 +67,8 @@ function Dashboard() {
     setMeetingError("");
 
     try {
-      const res = await fetch(`${API}/api/meetings`, {
+      // ✅ Relative path
+      const res = await fetch("/api/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -186,14 +177,12 @@ function Dashboard() {
 
         {/* Actions */}
         <section style={s.actionsRow}>
-          {/* New Meeting */}
           <div className="card-hover" style={s.actionCard}>
             <div style={s.actionCardHeader}><span style={{ fontSize: "2rem" }}>📹</span><h3 style={s.actionTitle}>New Meeting</h3></div>
             <p style={s.actionDesc}>Schedule a meeting and invite participants</p>
             <button className="action-btn" onClick={() => setShowModal(true)} style={s.primaryBtn}>Create Meeting</button>
           </div>
 
-          {/* Join Meeting */}
           <div className="card-hover" style={s.actionCard}>
             <div style={s.actionCardHeader}><span style={{ fontSize: "2rem" }}>🔗</span><h3 style={s.actionTitle}>Join Meeting</h3></div>
             <p style={s.actionDesc}>Enter a meeting code to join instantly</p>
@@ -207,7 +196,6 @@ function Dashboard() {
             </button>
           </div>
 
-          {/* All Meetings */}
           <div className="card-hover" style={{ ...s.actionCard, background: "linear-gradient(135deg, #6C63FF 0%, #5A54FF 100%)" }}>
             <div style={s.actionCardHeader}><span style={{ fontSize: "2rem" }}>📅</span><h3 style={{ ...s.actionTitle, color: "#fff" }}>All Meetings</h3></div>
             <p style={{ ...s.actionDesc, color: "rgba(255,255,255,0.75)" }}>View and manage all your scheduled meetings</p>
@@ -256,8 +244,7 @@ function getGreeting() {
   return "evening";
 }
 
-const s = { 
-  // keep all the styles from your previous code
+const s = {
   root: { display: "flex", minHeight: "100vh", background: "#f8fafc", fontFamily: "'DM Sans', sans-serif" },
   sidebar: { width: "240px", minHeight: "100vh", background: "#0f1117", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "28px 16px", position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 10 },
   sideTop: { display: "flex", flexDirection: "column", gap: "36px" },

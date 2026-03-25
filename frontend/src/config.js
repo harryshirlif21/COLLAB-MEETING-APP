@@ -1,6 +1,3 @@
 // frontend/src/config.js
-
-const HOST = "10.3.17.30";
-
-export const API_URL    = `https://${HOST}:5000`;
-export const SOCKET_URL = `https://${HOST}:5000`;
+// All API calls now go through Nginx reverse proxy using relative paths.
+// No hardcoded URLs needed — Nginx forwards /api/* and /socket.io/* to the backend.
