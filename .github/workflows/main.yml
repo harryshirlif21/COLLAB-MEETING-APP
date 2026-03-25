@@ -1,0 +1,115 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────
+  # JOB 1: Test
+  # ─────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Build frontend (smoke test)
+        working-directory: ./frontend
+        run: npm run build
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm install
+
+  # ─────────────────────────────────────────
+  # JOB 2: Build & Push Docker Images
+  # ─────────────────────────────────────────
+  build:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          dockerfile: ./frontend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/collab-meeting-app-frontend:latest
+
+      - name: Build & push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          dockerfile: ./backend/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/collab-meeting-app-backend:latest
+
+  # ─────────────────────────────────────────
+  # JOB 3: Deploy to Server via SSH
+  # ─────────────────────────────────────────
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose.yml to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "/opt/collab-meeting-app"
+
+      - name: SSH & deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /opt/collab-meeting-app
+
+            # Pull latest images
+            docker pull ${{ secrets.DOCKER_USERNAME }}/collab-meeting-app-frontend:latest
+            docker pull ${{ secrets.DOCKER_USERNAME }}/collab-meeting-app-backend:latest
+
+            # Restart containers with zero-downtime
+            docker-compose -f docker-compose.prod.yml down
+            docker-compose -f docker-compose.prod.yml up -d
+
+            # Clean up old images
+            docker image prune -f
