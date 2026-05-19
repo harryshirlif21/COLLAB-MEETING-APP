@@ -1,7 +1,0 @@
-# On your server
-mkdir -p /opt/collab-meeting-app
-apt install docker.io docker-compose -y
-
-# Create the .env file
-nano /opt/collab-meeting-app/.env
-# fill in the values from .env.example
