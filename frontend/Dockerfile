@@ -1,18 +1,14 @@
-# Stage 1: Build React app
-FROM node:20-alpine AS builder
+FROM node:20-alpine
+
 WORKDIR /app
+
 COPY package*.json ./
 RUN npm install
+
 COPY . .
+
 RUN npm run build
 
-# Stage 2: Serve with Nginx
-FROM nginx:alpine
-# Remove default nginx config
-RUN rm /etc/nginx/conf.d/default.conf
-# Copy our custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-# Copy React build output
-COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 9090
+
+CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "9090"]

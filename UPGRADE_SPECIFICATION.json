@@ -1,0 +1,1073 @@
+{
+  "upgraded_system_overview": "Enterprise-grade collaborative meeting platform optimized for academic institutions with premium UI/UX. Combines WebRTC P2P for small groups with optional SFU (Selective Forwarding Unit) for scalability. Introduces persistence layer (chat, files, recordings), comprehensive security (passwords, waiting rooms, role-based permissions), and academic features (lecture mode, attendance tracking, participation analytics). Modern glassmorphic UI with Framer Motion animations inspired by top SaaS platforms.",
+
+  "new_architecture": {
+    "media_layer": "Hybrid P2P + SFU architecture: Default P2P for ≤6 participants (bandwidth efficient), automatically upgrade to mediasoup SFU for >6 participants. Participants can enable audio-only fallback for low-bandwidth scenarios. Adaptive bitrate negotiation per peer connection. Server-side media recording via FFmpeg/GStreamer integration.",
+    
+    "realtime_layer": "Enhanced Socket.IO with namespace segregation (/meeting/:code for isolated rooms), exponential backoff reconnection (3s → 30s max), presence awareness (user online/offline status), typing indicators, and read receipts for chat. Event versioning for backward compatibility.",
+    
+    "storage_layer": "MySQL for relational data (meetings, users, chat, attendance, permissions). MinIO/S3 for file/recording storage (hybrid: local disk for ≤100MB, cloud for larger). Redis for session caching and real-time state (optional, for horizontal scaling). Message queue (Bull/RabbitMQ) for async tasks (email notifications, recording processing)."
+  },
+
+  "enhanced_features": {
+    "existing_features_improved": [
+      {
+        "feature": "Chat",
+        "improvements": [
+          "Messages persisted to database with sender_id, meeting_id, timestamp",
+          "Message editing and deletion with audit trail",
+          "Message search and filtering",
+          "Typing indicators ('User is typing...')",
+          "Read receipts",
+          "Markdown support with sanitization (XSS prevention)",
+          "Emoji reactions on messages"
+        ]
+      },
+      {
+        "feature": "File Sharing",
+        "improvements": [
+          "Actual file uploads (not base64) via multipart/form-data",
+          "File storage on disk/cloud (MinIO)",
+          "Thumbnail generation for images/PDFs",
+          "File version history",
+          "Download tracking",
+          "File sharing permissions (host only, all participants)"
+        ]
+      },
+      {
+        "feature": "Recording",
+        "improvements": [
+          "Server-side recording (not browser-only)",
+          "Multiple recording modes: audio-only, video-only, combined",
+          "Automatic transcoding to multiple formats (MP4, WebM)",
+          "Pause/resume recording",
+          "Recording metadata (start, end, participants, duration)",
+          "Storage and retrieval API"
+        ]
+      },
+      {
+        "feature": "Hand Raise",
+        "improvements": [
+          "Ordered queue system (FIFO)",
+          "Host can see queue order and accept/reject individual hands",
+          "Auto-lower hand when participant speaks",
+          "Analytics on hand raises per participant"
+        ]
+      },
+      {
+        "feature": "Breakout Rooms",
+        "improvements": [
+          "Audio/video isolated per breakout room (not shared with main room)",
+          "Host can visit each breakout room",
+          "Automatic participant assignment or manual join",
+          "Time warnings (5 min, 1 min before end)",
+          "Chat isolation per breakout room"
+        ]
+      },
+      {
+        "feature": "Meeting List",
+        "improvements": [
+          "Show meeting status (scheduled, in-progress, ended, recording)",
+          "Participants count visible",
+          "Quick action buttons (join, start, edit, delete)",
+          "Filter by status, date, role",
+          "Search by title"
+        ]
+      }
+    ],
+
+    "new_features_added": [
+      {
+        "feature": "Meeting Password & Token Access",
+        "description": "Meetings can require password or one-time token. Host sets password when creating meeting. Participants enter password to join.",
+        "api": "POST /api/meetings with optional password field",
+        "socket": "join-meeting event validates password before admission"
+      },
+      {
+        "feature": "Waiting Room",
+        "description": "When enabled, participants join waiting room first. Host reviews and manually admits. Waiting room has its own video preview and chat.",
+        "api": "POST /api/meetings/waiting-room/admit (host only)",
+        "socket": "waiting-room-join, user-admitted, admission-denied"
+      },
+      {
+        "feature": "Role-Based Permissions",
+        "description": "Four roles: host (full control), co-host (moderation + recording), moderator (mute/unmute, remove), participant (basic). Permissions matrix in database.",
+        "roles": ["host", "co-host", "moderator", "participant"],
+        "permissions": ["mute_others", "remove_participant", "start_recording", "share_screen", "chat", "raise_hand"]
+      },
+      {
+        "feature": "Participant Kick/Ban",
+        "description": "Host/moderator can remove participant from meeting. Can optionally ban from future meetings.",
+        "api": "DELETE /api/meetings/:id/participants/:userId",
+        "socket": "participant-removed, participant-banned"
+      },
+      {
+        "feature": "Lecture Mode",
+        "description": "Host can enable lecture mode where all participants are muted by default. Only host speaks. Participants can request unmute via hand raise.",
+        "api": "PUT /api/meetings/:id/settings with lecture_mode flag",
+        "socket": "lecture-mode-enabled, request-unmute"
+      },
+      {
+        "feature": "Attendance Tracking",
+        "description": "Auto-log join/leave timestamps for all participants. Attendance report shows duration, entry/exit times, presence %.)",
+        "database": "attendance_logs table with user_id, meeting_id, join_time, leave_time",
+        "api": "GET /api/meetings/:id/attendance"
+      },
+      {
+        "feature": "Participation Analytics",
+        "description": "Detailed stats per participant: speaking time, hand raises, messages sent, reactions, files shared.",
+        "api": "GET /api/meetings/:id/analytics/:userId",
+        "tracking": "Track events in meeting_events table (speak, message, reaction, file_share)"
+      },
+      {
+        "feature": "Hand Raise Queue Management",
+        "description": "Visual queue showing ordered list of raised hands. Host can approve/reject/mute individual participants.",
+        "api": "PUT /api/meetings/:id/hand-raise/:userId with action (approve, reject, mute)",
+        "socket": "hand-queue-updated, hand-approved, hand-rejected"
+      },
+      {
+        "feature": "Email Notifications",
+        "description": "Async email reminders for upcoming meetings (1 day, 1 hour before). Join alerts for host when participant joins.",
+        "api": "POST /api/notifications/preferences (email, SMS)",
+        "implementation": "Bull job queue + nodemailer or SendGrid"
+      },
+      {
+        "feature": "Audio-Only Fallback",
+        "description": "Participants with poor bandwidth can switch to audio-only mode, reducing CPU/bandwidth by 80%.",
+        "socket": "toggle-audio-only event",
+        "media": "Disable video tracks, disable screen share"
+      },
+      {
+        "feature": "Adaptive Bitrate",
+        "description": "Monitor packet loss and RTT, dynamically adjust video resolution (1080p → 720p → 360p) and framerate.",
+        "implementation": "Monitor REMB (Receiver Estimated Maximum Bitrate) feedback, adjust constraints in RTCPeerConnection"
+      },
+      {
+        "feature": "Meeting Insights & Report",
+        "description": "Post-meeting report with attendees, duration, participation breakdown, recordings, chat export.",
+        "api": "GET /api/meetings/:id/report",
+        "exports": "PDF, CSV, JSON formats"
+      },
+      {
+        "feature": "LMS Integration Ready",
+        "description": "OAuth2/LTI endpoints for Moodle, Canvas, Blackboard integration. Auto-sync course enrollments.",
+        "api": "POST /api/lms/oauth/callback",
+        "implementation": "LTI 1.3 support ready (not fully implemented)"
+      }
+    ]
+  },
+
+  "ui_ux_design_system": {
+    "design_principles": [
+      "Glassmorphism: Frosted glass effect (backdrop-filter: blur, semi-transparent backgrounds)",
+      "Minimalism: Remove clutter, focus on essential actions",
+      "Micro-interactions: Smooth transitions (Framer Motion), hover effects, loading states",
+      "Accessibility: WCAG 2.1 AA, keyboard navigation, screen reader support",
+      "Responsive: Mobile-first, touch-friendly, adaptive layouts",
+      "Dark-first: Base color #0f1117 with subtle gradients",
+      "Consistency: Design tokens, reusable component library"
+    ],
+
+    "layout_structure": {
+      "dashboard": {
+        "sections": [
+          "Header: Logo, user profile dropdown, notifications icon",
+          "Sidebar: Collapsible nav (Dashboard, Meetings, History, Settings), user stats card",
+          "Main: Meeting grid/list with cards, quick-start CTA, stats cards",
+          "Floating: Plus button for new meeting"
+        ],
+        "responsive": "Sidebar → hamburger menu on mobile"
+      },
+
+      "meeting_room": {
+        "sections": [
+          "Top bar: Meeting title, recording indicator, participant count, leave button",
+          "Main grid: Video tiles with active speaker highlight",
+          "Bottom controls: Floating control bar (mute, video, share, reactions)",
+          "Right panel: Tabbed sidebar (chat, participants, files, hand-raise queue)",
+          "Modals: Settings, breakout rooms, waiting room"
+        ],
+        "responsive": "Stacked layout on mobile, collapsible right panel"
+      }
+    },
+
+    "key_components": [
+      {
+        "name": "VideoTile",
+        "props": ["userId", "stream", "isActive", "isHost", "handRaised", "isMuted", "isSpeaking"],
+        "features": ["Glassmorphic frame", "Name badge bottom-left", "Mute indicator", "Hand raise badge", "Active speaker highlight (glow)"]
+      },
+      {
+        "name": "ControlBar",
+        "props": ["onMicToggle", "onVideoToggle", "onScreenShare", "onReaction", "onHandRaise", "onChat"],
+        "features": ["Floating bar at bottom-center", "Icons with tooltips", "State indicators (red for muted)", "Reaction picker emoji grid"]
+      },
+      {
+        "name": "ChatMessage",
+        "props": ["sender", "text", "timestamp", "reactions", "isEdited"],
+        "features": ["Sender name in accent color", "Timestamp on hover", "Message reactions below", "Hover actions (react, edit, delete)"]
+      },
+      {
+        "name": "ParticipantCard",
+        "props": ["user", "role", "isMuted", "isScreenSharing", "handRaised"],
+        "features": ["User avatar", "Role badge (host crown)", "Status indicators", "Host can mute/remove via dropdown"]
+      },
+      {
+        "name": "MeetingCard",
+        "props": ["meeting", "isHost", "status", "onJoin", "onEdit", "onDelete"],
+        "features": ["Meeting title & description", "Date/time", "Participant count", "Status badge (upcoming, live, ended)", "Action buttons"]
+      },
+      {
+        "name": "HandRaiseQueue",
+        "props": ["queue", "onApprove", "onReject", "onMute"],
+        "features": ["Ordered list with numbers", "User avatars", "Action buttons per entry", "Smooth animations on add/remove"]
+      },
+      {
+        "name": "WaitingRoom",
+        "props": ["pendingUsers", "onAdmit", "onReject"],
+        "features": ["Video preview from webcam", "List of pending users with admit/reject buttons", "Message to waiting participants"]
+      },
+      {
+        "name": "RecordingIndicator",
+        "props": ["isRecording", "duration", "onStop"],
+        "features": ["Red dot animation", "Timer showing HH:MM:SS", "Stop button for host", "Floating position top-right"]
+      }
+    ],
+
+    "interaction_patterns": [
+      {
+        "pattern": "State Feedback",
+        "example": "Click mute → button turns red immediately → audio track disabled → other users see 'muted' badge"
+      },
+      {
+        "pattern": "Hover Tooltips",
+        "example": "Hover over mute button → tooltip 'Mute microphone (M)' appears after 300ms"
+      },
+      {
+        "pattern": "Animated Transitions",
+        "example": "Participant joins → name slides in from bottom with fade-in (0.3s cubic-bezier)"
+      },
+      {
+        "pattern": "Floating Reactions",
+        "example": "Send reaction 👍 → emoji floats up screen with scale-in + fade-out animation (2.5s total)"
+      },
+      {
+        "pattern": "Loading Skeletons",
+        "example": "Meeting list loading → show 3 skeleton cards with pulse animation → replace with real data on load"
+      },
+      {
+        "pattern": "Toast Notifications",
+        "example": "User joins → toast 'John joined' appears top-right for 3s with slide-in animation"
+      },
+      {
+        "pattern": "Undo Actions",
+        "example": "Delete message → toast with 'Undo' button appears for 5s"
+      }
+    ],
+
+    "animation_strategy": "Framer Motion library with presets: enter (fadeInUp 0.3s), exit (fadeOutDown 0.2s), hover (scale 1.05), tap (scale 0.95). Stagger animations for lists. Spring animations for bouncy feedback.",
+
+    "theme": {
+      "colors": {
+        "background": {
+          "primary": "#0f1117",
+          "secondary": "#16181f",
+          "tertiary": "#1a1d27"
+        },
+        "text": {
+          "primary": "#e8eaf0",
+          "secondary": "#9ca3af",
+          "accent": "#818cf8"
+        },
+        "ui": {
+          "border": "#23262f",
+          "hover": "#2d3044",
+          "active": "#4f46e5",
+          "success": "#4ade80",
+          "warning": "#fbbf24",
+          "error": "#f87171",
+          "muted": "#6b7280"
+        },
+        "glassmorphism": "rgba(15, 17, 23, 0.7) with backdrop-filter: blur(10px)"
+      },
+
+      "typography": {
+        "fontFamily": "'DM Sans', 'Inter', -apple-system, sans-serif",
+        "fontSize": {
+          "xs": "0.75rem",
+          "sm": "0.875rem",
+          "base": "1rem",
+          "lg": "1.125rem",
+          "xl": "1.25rem",
+          "2xl": "1.5rem"
+        },
+        "fontWeight": {
+          "regular": 400,
+          "medium": 500,
+          "semibold": 600,
+          "bold": 700
+        }
+      },
+
+      "spacing": {
+        "2xs": "2px",
+        "xs": "4px",
+        "sm": "8px",
+        "md": "12px",
+        "lg": "16px",
+        "xl": "24px",
+        "2xl": "32px",
+        "3xl": "48px"
+      },
+
+      "shadow": {
+        "sm": "0 1px 2px rgba(0, 0, 0, 0.05)",
+        "md": "0 4px 8px rgba(0, 0, 0, 0.1)",
+        "lg": "0 10px 24px rgba(0, 0, 0, 0.15)",
+        "glass": "0 8px 32px rgba(0, 0, 0, 0.2)"
+      },
+
+      "borderRadius": {
+        "sm": "4px",
+        "md": "8px",
+        "lg": "12px",
+        "xl": "16px",
+        "2xl": "20px",
+        "full": "9999px"
+      }
+    }
+  },
+
+  "meeting_room_ui_structure": {
+    "top_bar": "Fixed height 60px, background glassmorphic, contains: (left) meeting code + title + recording status dot, (center) participant count + network status, (right) floating controls (screenshare, chat toggle for mobile). Color scheme: #16181f with border-bottom 1px solid #23262f.",
+
+    "video_grid": "Responsive CSS grid, auto-fit columns (minmax 240px, 1fr), aspect-ratio 16/9. Active speaker highlighted with 4px inset glow (#818cf8). Video tiles have glassmorphic name badge bottom-left, hand raise emoji top-right, mute indicator top-left. Gap between tiles: 12px. Padding: 20px. Mobile: single column stacked.",
+
+    "control_bar": "Floating bar position fixed bottom-center, transform translateX(-50%), left 50%, margin-bottom 20px. Background: glassmorphic #16181f with border 1px #23262f. Display: flex gap-8px, padding 12px 20px, border-radius 16px. Buttons: square 44px with icons, hover scale 1.1 + shadow, active scale 0.95. Order: Mic | Video | Screenshare | Hand | Emoji picker | Chat toggle | Settings | Leave (red).",
+
+    "side_panel": "Fixed right 0 top 60px bottom 0, width 320px (mobile: full-screen overlay). Background: #16181f border-left 1px #23262f. Contains: (top) Tab bar (Chat, Participants, Files, Hand Queue), (middle) content area with scroll, (bottom) input area (for chat) or action buttons. Tab icons: 💬 Chat (count badge), 👥 Participants, 📁 Files, ✋ Hand Queue. Tab styling: flex 1, text-center, padding 12px, border-bottom 2px solid transparent, active: #818cf8.",
+
+    "modals": [
+      {
+        "name": "WaitingRoomModal",
+        "layout": "Center modal, width 460px max, background glassmorphic. Title: 'Waiting for Admission'. Content: video preview from webcam (aspect 16:9, border-radius xl), message 'You are in the waiting room...', actions: none (just wait or leave)."
+      },
+      {
+        "name": "BreakoutRoomsModal",
+        "layout": "Center modal, width 520px. Title: 'Breakout Rooms'. (Host view) input numRooms, duration, 'Create Rooms' button. (Active view) grid 2 columns of room cards, each showing room name, member count, action button (Join or Leave). Timer countdown top-right."
+      },
+      {
+        "name": "SettingsModal",
+        "layout": "Center modal, width 460px. Tabs: Audio/Video, Meeting, Accessibility. Toggle controls, dropdowns for device selection. Save/Cancel buttons."
+      },
+      {
+        "name": "RecordingModal",
+        "layout": "Alert-style modal, 'Recording has started. Recording indicator visible in top bar. Auto-close after 3s or click OK."
+      }
+    ]
+  },
+
+  "database_changes": {
+    "new_tables": [
+      {
+        "name": "chat_messages",
+        "purpose": "Persist all meeting chat messages with metadata",
+        "fields": [
+          "id (INTEGER, PK, auto-increment)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "user_id (INTEGER, FK → users.id)",
+          "content (TEXT, required)",
+          "edited_at (TIMESTAMP, nullable)",
+          "deleted_at (TIMESTAMP, soft delete)",
+          "created_at (TIMESTAMP)",
+          "updated_at (TIMESTAMP)"
+        ],
+        "indexes": ["(meeting_id, created_at) composite for sorting"]
+      },
+
+      {
+        "name": "message_reactions",
+        "purpose": "Store emoji reactions on messages",
+        "fields": [
+          "id (INTEGER, PK)",
+          "message_id (INTEGER, FK → chat_messages.id)",
+          "user_id (INTEGER, FK → users.id)",
+          "emoji (STRING(10), required)",
+          "created_at (TIMESTAMP)"
+        ],
+        "constraints": ["UNIQUE(message_id, user_id, emoji)"]
+      },
+
+      {
+        "name": "files",
+        "purpose": "Track uploaded files/documents in meetings",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "user_id (INTEGER, FK → users.id)",
+          "filename (STRING, required)",
+          "file_path (STRING, required)",
+          "mime_type (STRING)",
+          "file_size (INTEGER)",
+          "created_at (TIMESTAMP)"
+        ],
+        "storage_note": "Actual files stored in MinIO bucket or local /uploads/ directory"
+      },
+
+      {
+        "name": "attendance_logs",
+        "purpose": "Track participant join/leave times for attendance reporting",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "user_id (INTEGER, FK → users.id)",
+          "joined_at (TIMESTAMP, required)",
+          "left_at (TIMESTAMP, nullable)",
+          "duration_minutes (INTEGER, computed from join/leave)"
+        ],
+        "indexes": ["(meeting_id, user_id)", "(meeting_id, joined_at)"]
+      },
+
+      {
+        "name": "meeting_events",
+        "purpose": "Granular event tracking for analytics (speak time, messages, reactions, etc)",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "user_id (INTEGER, FK → users.id)",
+          "event_type (ENUM: 'speak', 'message', 'reaction', 'file_share', 'hand_raise')",
+          "event_data (JSON, nullable)",
+          "created_at (TIMESTAMP)"
+        ],
+        "note": "Allows computing speaking time, message count, etc via queries"
+      },
+
+      {
+        "name": "meeting_recordings",
+        "purpose": "Store metadata about meeting recordings",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "recording_path (STRING, required)",
+          "duration_seconds (INTEGER)",
+          "file_size (INTEGER)",
+          "format (STRING, e.g. 'mp4', 'webm')",
+          "status (ENUM: 'recording', 'processing', 'ready', 'failed')",
+          "created_at (TIMESTAMP)",
+          "processing_started_at (TIMESTAMP)"
+        ],
+        "storage_note": "Actual recording files in MinIO/local storage"
+      },
+
+      {
+        "name": "meeting_permissions",
+        "purpose": "Define role-based access control per meeting",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "role (ENUM: 'host', 'co-host', 'moderator', 'participant')",
+          "can_mute_others (BOOLEAN)",
+          "can_remove_participant (BOOLEAN)",
+          "can_start_recording (BOOLEAN)",
+          "can_share_screen (BOOLEAN)",
+          "can_chat (BOOLEAN)",
+          "can_raise_hand (BOOLEAN)"
+        ],
+        "note": "Predefined roles, but can be customized per meeting"
+      },
+
+      {
+        "name": "meeting_participants",
+        "purpose": "Enhanced version with role and permission tracking",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "user_id (INTEGER, FK → users.id)",
+          "role (ENUM: 'host', 'co-host', 'moderator', 'participant')",
+          "joined_at (TIMESTAMP)",
+          "left_at (TIMESTAMP, nullable)",
+          "is_banned (BOOLEAN, default false)",
+          "created_at (TIMESTAMP)"
+        ],
+        "indexes": ["(meeting_id, user_id, is_banned)"]
+      },
+
+      {
+        "name": "hand_raise_queue",
+        "purpose": "Track ordered queue of raised hands during meeting",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "user_id (INTEGER, FK → users.id)",
+          "queue_position (INTEGER, position in queue)",
+          "raised_at (TIMESTAMP)",
+          "approved_at (TIMESTAMP, nullable)",
+          "rejected_at (TIMESTAMP, nullable)",
+          "status (ENUM: 'pending', 'approved', 'rejected')"
+        ],
+        "note": "Sorted by queue_position, auto-increment on raise"
+      },
+
+      {
+        "name": "waiting_room_requests",
+        "purpose": "Track users waiting for admission before joining meeting",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id)",
+          "user_id (INTEGER, FK → users.id)",
+          "requested_at (TIMESTAMP)",
+          "admitted_at (TIMESTAMP, nullable)",
+          "rejected_at (TIMESTAMP, nullable)",
+          "status (ENUM: 'waiting', 'admitted', 'rejected')"
+        ]
+      },
+
+      {
+        "name": "meeting_settings",
+        "purpose": "Enhanced meeting configuration (password, lecture mode, waiting room, etc)",
+        "fields": [
+          "id (INTEGER, PK)",
+          "meeting_id (INTEGER, FK → meetings.id, UNIQUE)",
+          "password_hash (STRING, nullable, hashed meeting password)",
+          "enable_waiting_room (BOOLEAN, default false)",
+          "enable_lecture_mode (BOOLEAN, default false)",
+          "enable_recording (BOOLEAN, default true)",
+          "participants_can_share_screen (BOOLEAN, default true)",
+          "participants_can_chat (BOOLEAN, default true)",
+          "created_at (TIMESTAMP)",
+          "updated_at (TIMESTAMP)"
+        ]
+      },
+
+      {
+        "name": "notifications",
+        "purpose": "Track user notification preferences and history",
+        "fields": [
+          "id (INTEGER, PK)",
+          "user_id (INTEGER, FK → users.id)",
+          "meeting_id (INTEGER, FK → meetings.id, nullable)",
+          "notification_type (ENUM: 'meeting_reminder', 'meeting_start', 'user_joined', 'chat_mention')",
+          "delivery_method (ENUM: 'email', 'sms', 'in_app')",
+          "is_enabled (BOOLEAN)",
+          "sent_at (TIMESTAMP, nullable)",
+          "created_at (TIMESTAMP)"
+        ]
+      },
+
+      {
+        "name": "oauth_tokens",
+        "purpose": "Store OAuth tokens for LMS integration (Canvas, Moodle, Blackboard)",
+        "fields": [
+          "id (INTEGER, PK)",
+          "user_id (INTEGER, FK → users.id)",
+          "lms_provider (STRING, e.g. 'canvas', 'moodle')",
+          "access_token (TEXT, encrypted)",
+          "refresh_token (TEXT, encrypted, nullable)",
+          "expires_at (TIMESTAMP)",
+          "created_at (TIMESTAMP)"
+        ]
+      }
+    ],
+
+    "modified_tables": [
+      {
+        "table": "meetings",
+        "changes": [
+          "ADD COLUMN meeting_password_hash (STRING, nullable) - remove after migration to meeting_settings",
+          "ADD COLUMN is_lecture_mode (BOOLEAN, default false) - remove after migration",
+          "ADD COLUMN enable_waiting_room (BOOLEAN, default false) - remove after migration",
+          "ADD COLUMN meeting_status (ENUM: 'scheduled', 'in_progress', 'ended', 'cancelled')",
+          "ADD COLUMN description (TEXT, nullable)",
+          "ADD INDEX (meeting_status) for filtering upcoming meetings"
+        ]
+      },
+      {
+        "table": "users",
+        "changes": [
+          "ADD COLUMN avatar_url (STRING, nullable)",
+          "ADD COLUMN timezone (STRING, default 'UTC')",
+          "ADD COLUMN is_email_verified (BOOLEAN, default false)",
+          "ADD COLUMN preferences_json (JSON, for notification settings, theme, etc)"
+        ]
+      },
+      {
+        "table": "meeting_participants",
+        "changes": [
+          "Redesign to include role, ban status (see new_tables entry above)"
+        ]
+      }
+    ]
+  },
+
+  "api_changes": [
+    {
+      "endpoint": "/api/meetings",
+      "method": "POST",
+      "purpose": "Create meeting with enhanced options",
+      "new_fields": {
+        "description": "string",
+        "meeting_password": "string (optional)",
+        "enable_waiting_room": "boolean",
+        "enable_lecture_mode": "boolean",
+        "max_participants": "integer (optional)"
+      },
+      "response_additions": ["meeting_settings_id", "waiting_room_enabled"]
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/join",
+      "method": "POST",
+      "purpose": "Enhanced join with password validation and waiting room flow",
+      "request_body": {
+        "meeting_code": "string",
+        "password": "string (optional)",
+        "device_info": "{ audio: bool, video: bool }"
+      },
+      "response": {
+        "status": "joined | waiting_room | rejected",
+        "message": "string"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/waiting-room/admit",
+      "method": "POST",
+      "purpose": "Host admits participant from waiting room",
+      "permission": "host",
+      "request_body": {
+        "user_id": "integer"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/waiting-room/deny",
+      "method": "POST",
+      "purpose": "Host denies participant from waiting room",
+      "permission": "host",
+      "request_body": {
+        "user_id": "integer"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/participants/:userId/kick",
+      "method": "DELETE",
+      "purpose": "Moderator/host removes participant from meeting",
+      "query_params": {
+        "ban": "boolean (optional, ban from future)"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/participants/:userId/mute",
+      "method": "PUT",
+      "purpose": "Host/moderator mutes specific participant",
+      "request_body": {
+        "mute_audio": "boolean",
+        "mute_video": "boolean"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/settings",
+      "method": "PUT",
+      "purpose": "Update meeting configuration (password, lecture mode, recording)",
+      "permission": "host",
+      "request_body": {
+        "enable_lecture_mode": "boolean",
+        "enable_recording": "boolean",
+        "participants_can_share_screen": "boolean",
+        "participants_can_chat": "boolean"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/recording/start",
+      "method": "POST",
+      "purpose": "Start server-side meeting recording",
+      "permission": "host, co-host"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/recording/stop",
+      "method": "POST",
+      "purpose": "Stop and save meeting recording",
+      "permission": "host, co-host"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/recordings",
+      "method": "GET",
+      "purpose": "List all recordings for meeting"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/chat",
+      "method": "GET",
+      "purpose": "Fetch chat history for meeting",
+      "query_params": {
+        "limit": "integer (default 50)",
+        "offset": "integer (for pagination)"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/chat",
+      "method": "POST",
+      "purpose": "Send chat message (deprecated, use Socket.IO instead)"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/chat/:messageId",
+      "method": "PUT",
+      "purpose": "Edit own message"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/chat/:messageId",
+      "method": "DELETE",
+      "purpose": "Delete own message (soft delete)"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/files",
+      "method": "GET",
+      "purpose": "List files shared in meeting"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/files",
+      "method": "POST",
+      "purpose": "Upload file (multipart/form-data)",
+      "request": "FormData with file field"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/files/:fileId",
+      "method": "DELETE",
+      "purpose": "Delete uploaded file"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/files/:fileId/download",
+      "method": "GET",
+      "purpose": "Download file"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/attendance",
+      "method": "GET",
+      "purpose": "Get attendance report for meeting",
+      "response": [
+        {
+          "user_id": "integer",
+          "user_name": "string",
+          "joined_at": "timestamp",
+          "left_at": "timestamp",
+          "duration_minutes": "integer",
+          "attendance_percentage": "float"
+        }
+      ]
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/analytics/:userId",
+      "method": "GET",
+      "purpose": "Get detailed analytics for participant",
+      "response": {
+        "speaking_time_seconds": "integer",
+        "message_count": "integer",
+        "hand_raises": "integer",
+        "files_shared": "integer",
+        "reactions_sent": "integer"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/report",
+      "method": "GET",
+      "purpose": "Generate comprehensive post-meeting report",
+      "query_params": {
+        "format": "pdf | csv | json"
+      }
+    },
+
+    {
+      "endpoint": "/api/notifications/preferences",
+      "method": "GET|PUT",
+      "purpose": "Get/set user notification preferences",
+      "body": {
+        "meeting_reminders_email": "boolean",
+        "meeting_reminders_sms": "boolean",
+        "join_alerts_email": "boolean",
+        "reminder_hours_before": "integer (1, 24)"
+      }
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/hand-raise/:userId/approve",
+      "method": "PUT",
+      "purpose": "Approve hand raise, unmute participant",
+      "permission": "host, moderator"
+    },
+
+    {
+      "endpoint": "/api/meetings/:id/hand-raise/:userId/reject",
+      "method": "PUT",
+      "purpose": "Reject hand raise",
+      "permission": "host, moderator"
+    }
+  ],
+
+  "socket_changes": [
+    {
+      "event": "join-meeting",
+      "enhancements": "Validate password if meeting protected, check waiting room setting, return status (joined | waiting)"
+    },
+
+    {
+      "event": "user-admitted",
+      "direction": "server → client",
+      "payload": "{ userId, timestamp }",
+      "purpose": "User admitted from waiting room → connect WebRTC"
+    },
+
+    {
+      "event": "user-admitted-denied",
+      "direction": "server → client",
+      "payload": "{ reason: string }",
+      "purpose": "User rejected from waiting room → disconnect"
+    },
+
+    {
+      "event": "participant-kicked",
+      "direction": "server → broadcast",
+      "payload": "{ userId, reason: string }",
+      "purpose": "Participant removed by host/moderator"
+    },
+
+    {
+      "event": "participant-banned",
+      "direction": "server → broadcast",
+      "payload": "{ userId, banned_until: timestamp }",
+      "purpose": "Participant banned from future meetings"
+    },
+
+    {
+      "event": "chat-message",
+      "enhancements": "Include message_id, is_edited flag, auto-persist to DB"
+    },
+
+    {
+      "event": "chat-message-deleted",
+      "direction": "server → broadcast",
+      "payload": "{ message_id }",
+      "purpose": "Notify message deleted"
+    },
+
+    {
+      "event": "chat-message-edited",
+      "direction": "server → broadcast",
+      "payload": "{ message_id, new_content, edited_at }",
+      "purpose": "Notify message edited"
+    },
+
+    {
+      "event": "message-reaction",
+      "direction": "client ↔ server",
+      "payload": "{ message_id, emoji }",
+      "purpose": "Add emoji reaction to message"
+    },
+
+    {
+      "event": "user-typing",
+      "direction": "client → server → broadcast (others only)",
+      "payload": "{ user_id, user_name }",
+      "purpose": "Show 'User is typing...' indicator"
+    },
+
+    {
+      "event": "hand-raise-approved",
+      "direction": "server → client",
+      "payload": "{ user_id }",
+      "purpose": "Unmute participant audio"
+    },
+
+    {
+      "event": "lecture-mode-enabled",
+      "direction": "server → broadcast",
+      "payload": "{}",
+      "purpose": "All participants muted by default, can request unmute via hand raise"
+    },
+
+    {
+      "event": "recording-started",
+      "direction": "server → broadcast",
+      "payload": "{ timestamp }",
+      "purpose": "Meeting recording started"
+    },
+
+    {
+      "event": "recording-stopped",
+      "direction": "server → broadcast",
+      "payload": "{ duration_seconds }",
+      "purpose": "Meeting recording stopped"
+    },
+
+    {
+      "event": "file-uploaded",
+      "direction": "server → broadcast",
+      "payload": "{ file_id, filename, uploaded_by, timestamp }",
+      "purpose": "New file shared in meeting"
+    },
+
+    {
+      "event": "attendance-logged",
+      "direction": "server (internal)",
+      "purpose": "Log join/leave timestamps automatically"
+    },
+
+    {
+      "event": "participant-status",
+      "direction": "server → broadcast",
+      "payload": "{ user_id, is_muted_audio, is_muted_video, is_speaking }",
+      "purpose": "Real-time participant status updates"
+    },
+
+    {
+      "event": "sfu-offer",
+      "direction": "client → server",
+      "payload": "{ sdp_offer }",
+      "purpose": "WebRTC offer for SFU connection (when >6 participants)"
+    }
+  ],
+
+  "scalability_plan": {
+    "current_limitations": [
+      "In-memory state: Breakout rooms, chat, presence → lost on server restart",
+      "Single server: No horizontal scaling, session affinity issues",
+      "P2P only: Bandwidth inefficient for >6 participants, creates bottleneck",
+      "Browser recording: Only host's stream, stored locally, loss of data",
+      "No database persistence: Chat, files, recordings → all in-memory",
+      "Rate limiting: None → vulnerable to abuse",
+      "File storage: No file uploads handling → base64 bloat"
+    ],
+
+    "solutions": [
+      {
+        "problem": "In-memory state loss",
+        "solution": "Implement Redis cache layer for session state (breakout rooms, presence, chat queue). Periodic sync to MySQL. Implementation: ioredis library, cache TTL 1h."
+      },
+
+      {
+        "problem": "Single server bottleneck",
+        "solution": "Use Socket.IO Redis adapter for multi-server deployment. Sessions sticky-routed via load balancer or Redis pubsub. Requires Docker + reverse proxy (Nginx)."
+      },
+
+      {
+        "problem": "P2P bandwidth for large groups",
+        "solution": "Detect participant count, auto-upgrade to mediasoup SFU when >6 participants. SFU forwards media from each peer to all others (star topology). Reduce bandwidth by 60-80% for large meetings."
+      },
+
+      {
+        "problem": "Recording scalability",
+        "solution": "Server-side recording via FFmpeg subprocess. Store in MinIO (S3-compatible). Async job queue (Bull) for encoding/transcoding. Webhook callback on completion."
+      },
+
+      {
+        "problem": "Chat/file persistence",
+        "solution": "Write to MySQL immediately (async insert). Archive old messages to separate table or S3 after 90 days. Implement pagination (fetch 50 messages at a time)."
+      },
+
+      {
+        "problem": "Rate limiting & abuse",
+        "solution": "Implement express-rate-limit middleware. Limits: 100 requests/min per IP, 50 messages/min per user, 10 files/meeting. Block repeat offenders."
+      },
+
+      {
+        "problem": "File upload handling",
+        "solution": "Use multer middleware for multipart/form-data. Store files in MinIO (local S3-compatible server or AWS S3). Generate thumbnails via sharp. CDN for delivery."
+      },
+
+      {
+        "problem": "Meeting statistics computation",
+        "solution": "Track granular events in meeting_events table (speak, message, reaction). Use materialized views or scheduled jobs to pre-compute analytics. Export via API."
+      },
+
+      {
+        "problem": "Horizontal scaling of WebRTC",
+        "solution": "Use coturn TURN server pool (load-balanced). Participants connect to nearest TURN relay. Improves NAT traversal for geo-distributed users."
+      }
+    ]
+  },
+
+  "security_improvements": [
+    {
+      "area": "Authentication",
+      "improvement": "Implement JWT refresh tokens with short expiry (15 min access, 7d refresh). Blacklist revoked tokens in Redis.",
+      "implementation": "POST /api/auth/refresh endpoint, store blacklist in Redis"
+    },
+
+    {
+      "area": "Meeting Access",
+      "improvement": "Meeting password stored as bcrypt hash. One-time tokens for guest access (email invite links).",
+      "implementation": "Compare input hash, generate 32-char random token with 24h expiry"
+    },
+
+    {
+      "area": "Permissions",
+      "improvement": "Role-based access control (RBAC) enforced server-side on all APIs. Check permission before allowing action (mute, remove, record).",
+      "implementation": "Middleware: checkPermission(action, meeting_id) on each protected endpoint"
+    },
+
+    {
+      "area": "Input Validation",
+      "improvement": "Sanitize chat messages (XSS prevention), validate file uploads (MIME type, size limits), escape SQL queries (Sequelize parameterization).",
+      "implementation": "joi/yup schemas for request validation, DOMPurify for chat HTML, multer fileFilter"
+    },
+
+    {
+      "area": "Rate Limiting",
+      "improvement": "Prevent brute force on login, limit message spam, limit file uploads.",
+      "implementation": "express-rate-limit middleware with Redis store"
+    },
+
+    {
+      "area": "Encryption",
+      "improvement": "Encrypt meeting passwords and sensitive data at rest (bcrypt passwords, AES for meeting tokens).",
+      "implementation": "crypto library, store encrypted in DB"
+    },
+
+    {
+      "area": "HTTPS & TLS",
+      "improvement": "Enforce HTTPS in production, use valid SSL certificates (not self-signed), enable HSTS header.",
+      "implementation": "Let's Encrypt, Express helmet middleware"
+    },
+
+    {
+      "area": "CORS & Security Headers",
+      "improvement": "Strict CORS origin validation, CSP headers, X-Frame-Options, X-Content-Type-Options.",
+      "implementation": "helmet middleware, review CORS whitelist"
+    },
+
+    {
+      "area": "Audit Logging",
+      "improvement": "Log all sensitive actions (login, kick, record start, password change) with IP and timestamp.",
+      "implementation": "Dedicated audit_logs table, structured logging (Winston)"
+    },
+
+    {
+      "area": "Data Protection",
+      "improvement": "Soft delete for user accounts, encrypt user emails, GDPR-ready data export/deletion APIs.",
+      "implementation": "timestamps for deleted_at, encrypt PII, implement data portability endpoints"
+    }
+  ],
+
+  "academic_use_case_support": {
+    "lecture_mode": "Instructor enables lecture mode when starting meeting. All students automatically muted (audio + video disabled). Only instructor visible by default. Students can request to unmute via hand raise → instructor sees queue → can approve individual or all. Recording continues throughout, auto-saved to course. Perfect for large lectures (100+ students) where only instructor speaks.",
+
+    "student_interaction": "Hand raise queue creates orderly participation. Students see their position in queue. Instructor can accept hands in order or skip. Chat available for questions (if enabled by instructor). Reactions (thumbs up, clapping) provide quick non-verbal feedback without unmuting. Attendance auto-tracked → instructor sees who joined and for how long.",
+
+    "assessment_support": "Meeting recordings stored and linked to course (LMS integration ready). Instructor can export meeting transcript (via speech-to-text plugin). Chat exported as CSV. Attendance report downloadable. Analytics show student engagement metrics (hand raises, messages, speaking time). Ready for integration with assignment submission (students can reference recording as source material)."
+  }
+}

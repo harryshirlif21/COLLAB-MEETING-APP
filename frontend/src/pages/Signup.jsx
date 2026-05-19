@@ -1,15 +1,20 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Hexagon, AlertCircle, CheckCircle2 } from "lucide-react";
+import AuthLayout from "../layouts/AuthLayout";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
+import Card from "../components/ui/Card";
 
 export default function Signup() {
-  const navigate  = useNavigate();
-  const [name, setName]         = useState("");
-  const [email, setEmail]       = useState("");
+  const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm]   = useState("");
-  const [message, setMessage]   = useState({ text: "", type: "" });
-  const [loading, setLoading]   = useState(false);
-  const [showPw, setShowPw]     = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [message, setMessage] = useState({ text: "", type: "" });
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,7 +29,7 @@ export default function Signup() {
     }
     setLoading(true);
     try {
-      const response = await fetch("/api/auth/register", {
+      const response = await fetch("http://localhost:5000/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
@@ -45,131 +50,156 @@ export default function Signup() {
 
   const pwStrength = () => {
     if (!password) return null;
-    if (password.length < 6) return { label: "Too short", color: "#ef4444", width: "25%" };
-    if (password.length < 8) return { label: "Weak",      color: "#f59e0b", width: "50%" };
-    if (password.length < 12) return { label: "Good",     color: "#10b981", width: "75%" };
-    return { label: "Strong", color: "#6C63FF", width: "100%" };
+    if (password.length < 6) return { label: "Too short", color: "text-danger", width: "25%" };
+    if (password.length < 8) return { label: "Weak", color: "text-warning", width: "50%" };
+    if (password.length < 12) return { label: "Good", color: "text-secondary", width: "75%" };
+    return { label: "Strong", color: "text-primary", width: "100%" };
   };
   const strength = pwStrength();
 
   return (
-    <div style={s.root}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
-        * { box-sizing: border-box; }
-        input:focus { outline: 2px solid #6C63FF; border-color: transparent !important; }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes spin    { to{transform:rotate(360deg)} }
-        @media (max-width: 480px) {
-          .signup-card { padding: 32px 24px !important; margin: 16px !important; }
-        }
-      `}</style>
+    <AuthLayout>
+      <Card className="w-full">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="flex items-center gap-3 mb-8"
+        >
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+            <Hexagon className="w-7 h-7 text-white" />
+          </div>
+          <span className="text-2xl font-bold text-text-primary font-display">Collab</span>
+        </motion.div>
 
-      <div style={s.bgCircle1} />
-      <div style={s.bgCircle2} />
-
-      <div className="signup-card" style={s.card}>
-        <div style={s.logoRow}>
-          <span style={s.logoIcon}>⬡</span>
-          <span style={s.logoText}>Collab</span>
-        </div>
-
-        <div style={s.headingGroup}>
-          <h1 style={s.heading}>Create account</h1>
-          <p style={s.subheading}>Get started for free today</p>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          className="mb-8"
+        >
+          <h1 className="text-2xl font-bold text-text-primary font-display mb-2">Create account</h1>
+          <p className="text-text-secondary">Get started for free today</p>
+        </motion.div>
 
         {message.text && (
-          <div style={{ ...s.msgBox, ...(message.type === "error" ? s.errorMsg : s.successMsg) }}>
-            {message.type === "error" ? "⚠" : "✓"} {message.text}
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mb-6 p-4 rounded-xl flex items-center gap-3 ${
+              message.type === "error"
+                ? "bg-danger/10 border border-danger/30 text-danger"
+                : "bg-secondary/10 border border-secondary/30 text-secondary"
+            }`}
+          >
+            {message.type === "error" ? (
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            )}
+            <span className="text-sm">{message.text}</span>
+          </motion.div>
         )}
 
-        <form onSubmit={handleSubmit} style={s.form}>
-          <div style={s.fieldGroup}>
-            <label style={s.label}>Full Name</label>
-            <input type="text" placeholder="John Doe" value={name}
-              onChange={(e) => setName(e.target.value)} required style={s.input} />
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+          >
+            <Input
+              type="text"
+              label="Full Name"
+              placeholder="John Doe"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </motion.div>
 
-          <div style={s.fieldGroup}>
-            <label style={s.label}>Email Address</label>
-            <input type="email" placeholder="you@example.com" value={email}
-              onChange={(e) => setEmail(e.target.value)} required style={s.input} />
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.25 }}
+          >
+            <Input
+              type="email"
+              label="Email Address"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </motion.div>
 
-          <div style={s.fieldGroup}>
-            <label style={s.label}>Password</label>
-            <div style={{ position: "relative" }}>
-              <input type={showPw ? "text" : "password"} placeholder="Min. 6 characters"
-                value={password} onChange={(e) => setPassword(e.target.value)}
-                required style={{ ...s.input, paddingRight: "44px" }} />
-              <button type="button" onClick={() => setShowPw((v) => !v)} style={s.eyeBtn}>
-                {showPw ? "🙈" : "👁"}
-              </button>
-            </div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.3 }}
+          >
+            <Input
+              type="password"
+              label="Password"
+              placeholder="Min. 6 characters"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              showPasswordToggle
+              required
+            />
             {strength && (
-              <div style={s.strengthBar}>
-                <div style={{ ...s.strengthFill, width: strength.width, background: strength.color }} />
-                <span style={{ ...s.strengthLabel, color: strength.color }}>{strength.label}</span>
+              <div className="flex items-center gap-3 mt-2">
+                <div className="flex-1 h-1 bg-surface rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: strength.width }}
+                    transition={{ duration: 0.3 }}
+                    className={`h-full ${strength.color.replace('text-', 'bg-')}`}
+                  />
+                </div>
+                <span className={`text-xs font-semibold ${strength.color}`}>{strength.label}</span>
               </div>
             )}
-          </div>
+          </motion.div>
 
-          <div style={s.fieldGroup}>
-            <label style={s.label}>Confirm Password</label>
-            <input type="password" placeholder="Repeat password" value={confirm}
-              onChange={(e) => setConfirm(e.target.value)} required style={s.input} />
-            {confirm && password && (
-              <span style={{ fontSize: "0.78rem", color: password === confirm ? "#10b981" : "#ef4444", marginTop: "4px" }}>
-                {password === confirm ? "✓ Passwords match" : "✕ Passwords do not match"}
-              </span>
-            )}
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.35 }}
+          >
+            <Input
+              type="password"
+              label="Confirm Password"
+              placeholder="Repeat password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              error={confirm && password && password !== confirm ? "Passwords do not match" : ""}
+              required
+            />
+          </motion.div>
 
-          <button type="submit" disabled={loading} style={{ ...s.submitBtn, opacity: loading ? 0.75 : 1 }}>
-            {loading
-              ? <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-                  <span style={s.spinner} /> Creating account…
-                </span>
-              : "Create Account"
-            }
-          </button>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.4 }}
+          >
+            <Button type="submit" loading={loading} className="w-full">
+              {loading ? "Creating account..." : "Create Account"}
+            </Button>
+          </motion.div>
         </form>
 
-        <p style={s.switchText}>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.5 }}
+          className="text-center text-sm text-text-secondary mt-6"
+        >
           Already have an account?{" "}
-          <Link to="/login" style={s.link}>Sign in</Link>
-        </p>
-      </div>
-    </div>
+          <Link to="/login" className="text-primary font-semibold hover:text-primary-hover transition-colors">
+            Sign in
+          </Link>
+        </motion.p>
+      </Card>
+    </AuthLayout>
   );
 }
-
-const s = {
-  root:         { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0f1117", fontFamily: "'DM Sans', sans-serif", position: "relative", overflow: "hidden", padding: "20px" },
-  bgCircle1:    { position: "absolute", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(108,99,255,0.15) 0%, transparent 70%)", top: "-100px", right: "-100px", pointerEvents: "none" },
-  bgCircle2:    { position: "absolute", width: "400px", height: "400px", borderRadius: "50%", background: "radial-gradient(circle, rgba(90,84,255,0.1) 0%, transparent 70%)", bottom: "-80px", left: "-80px", pointerEvents: "none" },
-  card:         { background: "#16181f", borderRadius: "20px", padding: "40px", width: "100%", maxWidth: "420px", boxShadow: "0 24px 64px rgba(0,0,0,0.4)", border: "1px solid #1e2130", animation: "fadeUp 0.4s ease", position: "relative", zIndex: 1 },
-  logoRow:      { display: "flex", alignItems: "center", gap: "10px", marginBottom: "28px" },
-  logoIcon:     { fontSize: "1.6rem", color: "#6C63FF" },
-  logoText:     { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: "1.3rem", color: "#fff" },
-  headingGroup: { marginBottom: "24px" },
-  heading:      { fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#fff", marginBottom: "5px" },
-  subheading:   { color: "#64748b", fontSize: "0.88rem" },
-  msgBox:       { borderRadius: "10px", padding: "11px 16px", fontSize: "0.84rem", marginBottom: "18px", display: "flex", gap: "8px", alignItems: "center" },
-  errorMsg:     { background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)", color: "#fca5a5" },
-  successMsg:   { background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "#6ee7b7" },
-  form:         { display: "flex", flexDirection: "column", gap: "16px" },
-  fieldGroup:   { display: "flex", flexDirection: "column", gap: "7px" },
-  label:        { fontSize: "0.8rem", fontWeight: 600, color: "#94a3b8", letterSpacing: "0.04em" },
-  input:        { padding: "12px 16px", borderRadius: "10px", border: "1px solid #23262f", fontSize: "0.92rem", color: "#fff", background: "#1e2130", fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", width: "100%" },
-  eyeBtn:       { position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: "1rem", padding: "4px" },
-  strengthBar:  { display: "flex", alignItems: "center", gap: "10px", marginTop: "6px" },
-  strengthFill: { height: "4px", borderRadius: "2px", flex: "0 0 auto", transition: "all 0.3s" },
-  strengthLabel:{ fontSize: "0.75rem", fontWeight: 600 },
-  submitBtn:    { marginTop: "6px", background: "linear-gradient(135deg, #6C63FF, #5A54FF)", color: "#fff", border: "none", borderRadius: "10px", padding: "14px", fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", transition: "all 0.15s", fontFamily: "'DM Sans', sans-serif", width: "100%" },
-  switchText:   { textAlign: "center", fontSize: "0.86rem", color: "#64748b", marginTop: "22px" },
-  link:         { color: "#818cf8", fontWeight: 600, textDecoration: "none" },
-  spinner:      { width: "16px", height: "16px", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite", display: "inline-block" },
-};

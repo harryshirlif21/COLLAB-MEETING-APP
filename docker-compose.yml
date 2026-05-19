@@ -5,10 +5,12 @@ services:
       dockerfile: Dockerfile
     container_name: collab-frontend
     ports:
-      - "9090:80"
+      - "9090:9090"
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - collab-net
 
   backend:
     build:
@@ -18,17 +20,19 @@ services:
     ports:
       - "5000:5000"
     environment:
-      DB_HOST: db
-      DB_NAME: collab_db
-      DB_USER: collab_user
-      DB_PASS: collab_pass
-      JWT_SECRET: supersecret123
-      USE_HTTP: "true"
-      ALLOWED_ORIGINS: "http://localhost:9090"
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_NAME=collab_db
+      - DB_USER=collab_user
+      - DB_PASSWORD=collab_pass
+      - JWT_SECRET=your_jwt_secret_here
+      - ALLOWED_ORIGINS=http://localhost:9090
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - collab-net
 
   db:
     image: mysql:8.0
@@ -43,11 +47,18 @@ services:
       - "3307:3306"
     volumes:
       - db_data:/var/lib/mysql
+    networks:
+      - collab-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "collab_user", "-pcollab_pass"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
+
+networks:
+  collab-net:
+    driver: bridge
 
 volumes:
   db_data:

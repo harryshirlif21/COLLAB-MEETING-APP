@@ -7,17 +7,22 @@ const authRoutes    = require("./routes/auth");
 const meetingRoutes = require("./routes/meetingRoutes");
 const logsRoutes    = require("./routes/logs");
 const profileRoutes = require("./routes/profile");
+const featuresRoutes = require("./routes/features");
 
 const User               = require("./models/User");
 const Meeting            = require("./models/Meeting");
 const MeetingParticipant = require("./models/MeetingParticipant");
+const ChatMessage        = require("./models/ChatMessage");
+const AttendanceLog      = require("./models/AttendanceLog");
+const MeetingEvent       = require("./models/MeetingEvent");
+const MeetingRecording   = require("./models/MeetingRecording");
+const MeetingSettings    = require("./models/MeetingSettings");
+const HandRaiseQueue     = require("./models/HandRaiseQueue");
+const WaitingRoomRequest = require("./models/WaitingRoomRequest");
 
-const fs   = require("fs");
-const https = require("https");
-const http  = require("http");
+const http = require("http");
 const { Server } = require("socket.io");
 const jwt  = require("jsonwebtoken");
-const path = require("path");
 
 const app = express();
 
@@ -27,12 +32,40 @@ Meeting.belongsToMany(User, { through: MeetingParticipant, foreignKey: "meeting_
 Meeting.hasMany(MeetingParticipant, { as: "participants", foreignKey: "meeting_id" });
 MeetingParticipant.belongsTo(Meeting, { foreignKey: "meeting_id" });
 
+Meeting.hasMany(ChatMessage, { foreignKey: "meeting_id" });
+ChatMessage.belongsTo(User, { foreignKey: "user_id" });
+ChatMessage.belongsTo(Meeting, { foreignKey: "meeting_id" });
+
+Meeting.hasMany(AttendanceLog, { foreignKey: "meeting_id" });
+AttendanceLog.belongsTo(User, { foreignKey: "user_id" });
+AttendanceLog.belongsTo(Meeting, { foreignKey: "meeting_id" });
+
+Meeting.hasMany(MeetingEvent, { foreignKey: "meeting_id" });
+MeetingEvent.belongsTo(User, { foreignKey: "user_id" });
+MeetingEvent.belongsTo(Meeting, { foreignKey: "meeting_id" });
+
+Meeting.hasMany(MeetingRecording, { foreignKey: "meeting_id" });
+MeetingRecording.belongsTo(Meeting, { foreignKey: "meeting_id" });
+
+Meeting.hasOne(MeetingSettings, { foreignKey: "meeting_id" });
+MeetingSettings.belongsTo(Meeting, { foreignKey: "meeting_id" });
+
+Meeting.hasMany(HandRaiseQueue, { foreignKey: "meeting_id" });
+HandRaiseQueue.belongsTo(User, { foreignKey: "user_id" });
+HandRaiseQueue.belongsTo(Meeting, { foreignKey: "meeting_id" });
+
+Meeting.hasMany(WaitingRoomRequest, { foreignKey: "meeting_id" });
+WaitingRoomRequest.belongsTo(User, { foreignKey: "user_id" });
+WaitingRoomRequest.belongsTo(Meeting, { foreignKey: "meeting_id" });
+
 /* ================= CORS ================= */
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
-  : ["https://localhost:5173", "https://DESKTOP-I80NJCN:5173", "https://10.3.17.30:5173"];
+  : [
+      "http://localhost:9090",
+    ];
 
-const corsOptions = {
+app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -42,9 +75,7 @@ const corsOptions = {
     }
   },
   credentials: true,
-};
-
-app.use(cors(corsOptions));
+}));
 
 /* ================= MIDDLEWARE ================= */
 app.use(express.json({ limit: "10mb" }));
@@ -55,26 +86,35 @@ app.get("/api/ping", (req, res) => res.json({ ok: true, time: new Date().toISOSt
 /* ================= ROUTES ================= */
 app.use("/api/auth",     authRoutes);
 app.use("/api/meetings", meetingRoutes);
+app.use("/api/meetings", featuresRoutes);
 app.use("/api/logs",     logsRoutes);
 app.use("/api/profile",  profileRoutes);
 
-/* ================= DATABASE ================= */
-sequelize.sync({ alter: true })
-  .then(() => console.log("Database connected"))
-  .catch((err) => console.error("DB connection error:", err));
+/* ================= DATABASE (with retry) ================= */
+const connectWithRetry = async (retries = 10, delay = 3000) => {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      await sequelize.authenticate();
+      console.log("DB authenticated successfully");
+      await sequelize.sync({ alter: true });
+      console.log("DB synced successfully");
+      return;
+    } catch (err) {
+      console.error(`DB connection attempt ${i}/${retries} failed:`, err.message);
+      if (i === retries) {
+        console.error("Could not connect to DB after all retries. Exiting.");
+        process.exit(1);
+      }
+      console.log(`Retrying in ${delay / 1000}s...`);
+      await new Promise((res) => setTimeout(res, delay));
+    }
+  }
+};
 
-/* ================= SERVER (HTTP or HTTPS) ================= */
-let server;
+connectWithRetry();
 
-if (process.env.USE_HTTP === "true") {
-  server = http.createServer(app);
-} else {
-  const sslOptions = {
-    pfx: fs.readFileSync(process.env.SSL_PFX_PATH || "C:/certs/collab-dev.pfx"),
-    passphrase: process.env.SSL_PASSPHRASE || "mypassword",
-  };
-  server = https.createServer(sslOptions, app);
-}
+/* ================= SERVER ================= */
+const server = http.createServer(app);
 
 /* ================= SOCKET.IO ================= */
 const io = new Server(server, {
@@ -108,78 +148,10 @@ io.use((socket, next) => {
 });
 
 /* ================= SOCKET.IO EVENTS ================= */
-io.on("connection", (socket) => {
-  console.log(`[SOCKET] Connected: ${socket.id} (user: ${socket.user?.id})`);
-
-  socket.on("join-meeting", (code) => {
-    socket.join(code);
-    socket.to(code).emit("user-joined", socket.id);
-    const room = io.sockets.adapter.rooms.get(code);
-    const existingUsers = room ? [...room].filter((id) => id !== socket.id) : [];
-    socket.emit("meeting-users", existingUsers);
-  });
-
-  socket.on("signal", ({ to, offer, answer, candidate }) => {
-    if (!to) return;
-    io.to(to).emit("signal", { from: socket.id, offer, answer, candidate });
-  });
-
-  socket.on("chat-message", ({ code, text, timestamp }) => {
-    if (!code || !text?.trim()) return;
-    io.to(code).emit("chat-message", {
-      sender: socket.user?.username || socket.user?.name || `User ${socket.user?.id}`,
-      text: text.trim(),
-      timestamp: timestamp || new Date().toISOString(),
-    });
-  });
-
-  socket.on("screen-share-started", ({ code }) => socket.to(code).emit("screen-share-started", { userId: socket.id }));
-  socket.on("screen-share-stopped", ({ code }) => socket.to(code).emit("screen-share-stopped", { userId: socket.id }));
-
-  socket.on("slide-update",   ({ code, slides, index }) => socket.to(code).emit("slide-update", { slides, index }));
-  socket.on("slide-navigate", ({ code, index })         => socket.to(code).emit("slide-navigate", { index }));
-  socket.on("slides-closed",  ({ code })                => socket.to(code).emit("slides-closed"));
-
-  socket.on("raise-hand", ({ code }) => socket.to(code).emit("hand-raised", { userId: socket.id }));
-  socket.on("lower-hand", ({ code }) => socket.to(code).emit("hand-lowered", { userId: socket.id }));
-
-  socket.on("reaction", ({ code, emoji }) => io.to(code).emit("reaction", { emoji, userId: socket.id }));
-
-  socket.on("create-breakout-rooms", ({ code, numRooms, duration }) => {
-    const rooms = Array.from({ length: numRooms }, (_, i) => ({
-      id: `${code}-room-${i + 1}`, name: `Room ${i + 1}`, members: [],
-    }));
-    if (!io.breakoutRooms) io.breakoutRooms = {};
-    io.breakoutRooms[code] = rooms;
-    io.to(code).emit("breakout-rooms-created", { rooms, duration });
-  });
-
-  socket.on("join-breakout-room", ({ code, roomId }) => {
-    const rooms = io.breakoutRooms?.[code];
-    if (!rooms) return;
-    rooms.forEach((r) => { r.members = r.members.filter((m) => m !== socket.id); });
-    const room = rooms.find((r) => r.id === roomId);
-    if (room) room.members.push(socket.id);
-    socket.emit("breakout-join-ack", { roomId });
-    io.to(code).emit("breakout-rooms-update", { rooms });
-  });
-
-  socket.on("end-breakout-rooms", ({ code }) => {
-    if (io.breakoutRooms) delete io.breakoutRooms[code];
-    io.to(code).emit("breakout-ended");
-  });
-
-  socket.on("disconnecting", () => {
-    for (const room of socket.rooms) {
-      if (room !== socket.id) socket.to(room).emit("user-left", socket.id);
-    }
-  });
-
-  socket.on("disconnect", () => console.log(`[SOCKET] Disconnected: ${socket.id}`));
-});
+const setupSocketHandlers = require("./socketHandlers");
+setupSocketHandlers(io);
 
 /* ================= START ================= */
 server.listen(5000, "0.0.0.0", () => {
-  const proto = process.env.USE_HTTP === "true" ? "http" : "https";
-  console.log(`Server running on ${proto}://0.0.0.0:5000`);
+  console.log("Server running on http://0.0.0.0:5000");
 });

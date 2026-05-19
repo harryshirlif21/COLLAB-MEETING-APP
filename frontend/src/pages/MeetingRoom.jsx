@@ -1,6 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import io from "socket.io-client";
+import { 
+  Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, 
+  Hand, Hand as HandRaised, MessageSquare, Users, FileText, 
+  PhoneOff, Radio, X, Send, ChevronLeft, ChevronRight, 
+  Crown, Clock, MoreVertical
+} from "lucide-react";
+import Button from "../components/ui/Button";
+import Card from "../components/ui/Card";
+import Modal from "../components/ui/Modal";
+import Input from "../components/ui/Input";
+import Tabs from "../components/ui/Tabs";
 
 // ✅ No hardcoded URL — socket.io-client connects to same origin automatically
 // Nginx proxies /socket.io/ requests to the backend
@@ -103,7 +115,7 @@ export default function MeetingRoom() {
     } catch {}
 
     // ✅ Connect to same origin — Nginx proxies /socket.io/ to backend:5000
-    const socket = io({ auth: { token } });
+    const socket = io("http://localhost:5000", { auth: { token } });
     socketRef.current = socket;
 
     socket.on("connect",       () => console.log("[SOCKET] Connected:", socket.id));
@@ -292,225 +304,425 @@ export default function MeetingRoom() {
     navigate("/dashboard");
   };
 
-  const styles = {
-    root:        { minHeight: "100vh", background: "#0f1117", color: "#e8eaf0", fontFamily: "'DM Sans', sans-serif", padding: "0" },
-    topBar:      { display: "flex", alignItems: "center", justifyContent: "space-between", padding: mobile ? "10px 14px" : "14px 24px", background: "#16181f", borderBottom: "1px solid #23262f" },
-    topLeft:     { display: "flex", flexDirection: "column" },
-    topTitle:    { fontSize: mobile ? "0.9rem" : "1.1rem", fontWeight: 700, letterSpacing: "0.02em" },
-    statusDot:   (ok) => ({ fontSize: "0.78rem", color: ok ? "#4ade80" : "#f87171", marginTop: "2px" }),
-    mainGrid:    { display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 340px", gap: "0", height: mobile ? "auto" : "calc(100vh - 57px)", minHeight: mobile ? "calc(100vh - 57px)" : "auto" },
-    videoArea:   { padding: mobile ? "12px" : "20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "12px" },
-    videoGrid:   { display: "grid", gridTemplateColumns: mobile ? "1fr" : "repeat(auto-fill, minmax(260px, 1fr))", gap: "10px" },
-    videoCard:   { position: "relative", background: "#1a1d27", borderRadius: "14px", overflow: "hidden", aspectRatio: "16/9" },
-    videoEl:     { width: "100%", height: "100%", objectFit: "cover" },
-    videoLabel:  { position: "absolute", bottom: "8px", left: "10px", background: "rgba(0,0,0,0.65)", padding: "3px 10px", borderRadius: "20px", fontSize: "0.75rem", fontWeight: 600 },
-    handBadge:   { position: "absolute", top: "8px", right: "10px", fontSize: "1.2rem" },
-    controls:    { display: "flex", gap: "8px", flexWrap: "wrap", padding: "0 0 4px" },
-    btn:         (color, active) => ({ padding: mobile ? "8px 12px" : "9px 18px", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: 600, fontSize: mobile ? "0.78rem" : "0.85rem", transition: "all 0.15s", background: active === false ? "#2d3044" : color, color: active === false ? "#6b7280" : "#fff" }),
-    leaveBtn:    { padding: mobile ? "8px 12px" : "9px 18px", borderRadius: "8px", border: "none", cursor: "pointer", fontWeight: 700, fontSize: mobile ? "0.78rem" : "0.85rem", background: "#dc2626", color: "#fff" },
-    recBadge:    { display: "flex", alignItems: "center", gap: "6px", background: "#1a1d27", padding: "6px 14px", borderRadius: "8px", fontSize: "0.82rem", color: "#f87171", fontWeight: 700 },
-    sidebar:     { background: "#16181f", borderLeft: "1px solid #23262f", display: mobile ? (showSidebar ? "flex" : "none") : "flex", flexDirection: "column", ...(mobile && showSidebar ? { position: "fixed", inset: 0, zIndex: 100 } : {}) },
-    tabs:        { display: "flex", borderBottom: "1px solid #23262f" },
-    tab:         (active) => ({ flex: 1, padding: "13px 0", textAlign: "center", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", background: "none", border: "none", color: active ? "#818cf8" : "#6b7280", borderBottom: active ? "2px solid #818cf8" : "2px solid transparent" }),
-    sideContent: { flex: 1, overflowY: "auto", padding: "16px" },
-    chatMsg:     { marginBottom: "10px", fontSize: "0.88rem", lineHeight: 1.5 },
-    chatSender:  { color: "#818cf8", fontWeight: 700, marginRight: "6px" },
-    chatInput:   { display: "flex", gap: "8px", padding: "12px 16px", borderTop: "1px solid #23262f" },
-    input:       { flex: 1, background: "#23262f", border: "1px solid #2d3044", borderRadius: "8px", padding: "9px 12px", color: "#e8eaf0", fontSize: "0.88rem" },
-    sendBtn:     { background: "#4f46e5", color: "#fff", border: "none", borderRadius: "8px", padding: "9px 16px", cursor: "pointer", fontWeight: 700 },
-    reactionBtn: { fontSize: "1.4rem", background: "#1a1d27", border: "1px solid #2d3044", borderRadius: "50%", width: "44px", height: "44px", cursor: "pointer", transition: "transform 0.1s" },
-    floatEmoji:  (x) => ({ position: "fixed", bottom: "140px", left: `${x}%`, fontSize: "2rem", animation: "floatUp 2.5s ease-out forwards", pointerEvents: "none", zIndex: 100 }),
-    modal:       { position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 },
-    modalBox:    { background: "#1a1d27", borderRadius: "16px", padding: "32px", width: "460px", maxWidth: "95vw" },
-    modalTitle:  { fontSize: "1.2rem", fontWeight: 700, marginBottom: "20px" },
-    slideBox:    { position: "fixed", inset: 0, background: "#000", zIndex: 150, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" },
-    chatFab:     { position: "fixed", bottom: "20px", right: "20px", width: "52px", height: "52px", borderRadius: "50%", background: "#4f46e5", border: "none", fontSize: "1.4rem", cursor: "pointer", zIndex: 50, boxShadow: "0 4px 16px rgba(79,70,229,0.5)", display: "flex", alignItems: "center", justifyContent: "center" },
-  };
-
   const isConnected = connectionStatus.startsWith("Connected");
 
+  const tabData = [
+    { id: "chat", label: "Chat", icon: <MessageSquare className="w-4 h-4" /> },
+    { id: "participants", label: `Participants (${participants.length + 1})`, icon: <Users className="w-4 h-4" /> },
+    { id: "files", label: "Files", icon: <FileText className="w-4 h-4" /> },
+  ];
+
   return (
-    <div style={styles.root}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap');
-        @keyframes floatUp { 0%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-120px)} }
-        ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-track{background:#16181f} ::-webkit-scrollbar-thumb{background:#2d3044;border-radius:4px}
-      `}</style>
+    <div className="min-h-screen bg-background text-text-primary font-sans flex flex-col">
+      {/* Floating Reactions */}
+      <AnimatePresence>
+        {reactions.map((r) => (
+          <motion.div
+            key={r.id}
+            initial={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 0, y: -120 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 2.5 }}
+            className="fixed bottom-36 text-4xl pointer-events-none z-50"
+            style={{ left: `${r.x}%` }}
+          >
+            {r.emoji}
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
-      {reactions.map((r) => <div key={r.id} style={styles.floatEmoji(r.x)}>{r.emoji}</div>)}
-
-      <div style={styles.topBar}>
-        <div style={styles.topLeft}>
-          <span style={styles.topTitle}>📹 {code}</span>
-          <span style={styles.statusDot(isConnected)}>● {connectionStatus}</span>
+      {/* Top Bar */}
+      <header className="h-14 bg-surface border-b border-white/10 flex items-center justify-between px-4 lg:px-6">
+        <div className="flex items-center gap-3">
+          <Video className="w-5 h-5 text-primary" />
+          <span className="font-semibold font-display">{code}</span>
+          <span className={`text-xs font-medium ${isConnected ? 'text-secondary' : 'text-danger'}`}>
+            ● {connectionStatus}
+          </span>
         </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <div className="flex items-center gap-3">
           {isRecording && (
-            <div style={styles.recBadge}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f87171", display: "inline-block" }} />
+            <div className="flex items-center gap-2 bg-surface px-3 py-1.5 rounded-lg text-danger text-sm font-semibold">
+              <span className="w-2 h-2 rounded-full bg-danger animate-pulse" />
               REC {fmt(Math.floor(recSeconds / 60))}:{fmt(recSeconds % 60)}
             </div>
           )}
-          <button onClick={leaveMeeting} style={styles.leaveBtn}>Leave</button>
+          <Button onClick={leaveMeeting} variant="danger" size="sm">
+            <PhoneOff className="w-4 h-4" />
+            Leave
+          </Button>
         </div>
-      </div>
+      </header>
 
-      <div style={styles.mainGrid}>
-        <div style={styles.videoArea}>
-          {mediaError && <div style={{ background: "#78350f", padding: "10px 16px", borderRadius: "8px", fontSize: "0.85rem" }}>⚠️ {mediaError}</div>}
-
-          <div style={styles.videoGrid}>
-            <div style={styles.videoCard}>
-              <video ref={localVideoRef} autoPlay muted playsInline style={styles.videoEl} />
-              <span style={styles.videoLabel}>You {handRaised ? "✋" : ""}</span>
-            </div>
-            {Object.entries(remoteStreams).map(([id, stream]) => (
-              <div key={id} style={styles.videoCard}>
-                <video autoPlay playsInline style={styles.videoEl} ref={(v) => { if (v && v.srcObject !== stream) v.srcObject = stream; }} />
-                <span style={styles.videoLabel}>{id.slice(0, 8)}</span>
-                {raisedHands.has(id) && <span style={styles.handBadge}>✋</span>}
-              </div>
-            ))}
-            {isSharingScreen && (
-              <div style={{ ...styles.videoCard, border: "2px solid #818cf8" }}>
-                <video ref={screenVideoRef} autoPlay muted playsInline style={styles.videoEl} />
-                <span style={styles.videoLabel}>Your Screen</span>
-              </div>
-            )}
-          </div>
-
-          <div style={styles.controls}>
-            <button onClick={toggleMic}    style={styles.btn("#4f46e5", micEnabled)}>   {micEnabled    ? "🎤 Mic"  : "🔇 Muted"}</button>
-            <button onClick={toggleCamera} style={styles.btn("#4f46e5", cameraEnabled)}>{cameraEnabled ? "📷 Cam"  : "🚫 Off"}</button>
-            {!isSharingScreen ? <button onClick={startScreenShare} style={styles.btn("#0891b2")}>🖥️ Share</button>
-                              : <button onClick={stopScreenShare}  style={styles.btn("#dc2626")}>⏹ Stop</button>}
-            {isHost && !isRecording && <button onClick={startRecording} style={styles.btn("#7c3aed")}>⏺ Rec</button>}
-            {isHost &&  isRecording && <button onClick={stopRecording}  style={styles.btn("#dc2626")}>⏹ Save</button>}
-            <button onClick={toggleHand} style={styles.btn(handRaised ? "#d97706" : "#374151")}>{handRaised ? "✋ Lower" : "✋ Hand"}</button>
-            {isHost && (
-              <label style={{ ...styles.btn("#065f46"), display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                📂 Files
-                <input type="file" accept="image/*,.pdf" multiple onChange={handleFileUpload} style={{ display: "none" }} />
-              </label>
-            )}
-            {isHost && <button onClick={() => setShowBreakout(true)} style={styles.btn("#9333ea")}>🏠 Breakout</button>}
-          </div>
-
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {REACTIONS.map((emoji) => <button key={emoji} onClick={() => sendReaction(emoji)} style={styles.reactionBtn}>{emoji}</button>)}
-          </div>
-        </div>
-
-        <div style={styles.sidebar}>
-          {mobile && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #23262f" }}>
-              <span style={{ fontWeight: 700 }}>Chat & Participants</span>
-              <button onClick={() => setShowSidebar(false)} style={{ background: "none", border: "none", color: "#9ca3af", fontSize: "1.2rem", cursor: "pointer" }}>✕</button>
+      {/* Main Grid */}
+      <div className={`flex-1 flex ${mobile ? 'flex-col' : ''}`}>
+        {/* Video Area */}
+        <div className="flex-1 flex flex-col p-4 gap-4 overflow-auto">
+          {mediaError && (
+            <div className="bg-warning/20 border border-warning/30 text-warning p-3 rounded-xl text-sm">
+              ⚠️ {mediaError}
             </div>
           )}
-          <div style={styles.tabs}>
-            {["chat", "participants", "files"].map((t) => (
-              <button key={t} style={styles.tab(activeTab === t)} onClick={() => setActiveTab(t)}>
-                {t === "chat" ? "💬" : t === "participants" ? `👥 ${participants.length + 1}` : "📁"}
-              </button>
+
+          {/* Video Grid */}
+          <div className={`grid ${mobile ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'} gap-4`}>
+            {/* Local Video */}
+            <Card className="relative overflow-hidden aspect-video p-0">
+              <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+              <div className="absolute bottom-3 left-3 bg-black/65 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-semibold text-white">
+                You {handRaised && <HandRaised className="w-3 h-3 inline ml-1" />}
+              </div>
+            </Card>
+
+            {/* Remote Videos */}
+            {Object.entries(remoteStreams).map(([id, stream]) => (
+              <Card key={id} className="relative overflow-hidden aspect-video p-0">
+                <video 
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-full object-cover" 
+                  ref={(v) => { if (v && v.srcObject !== stream) v.srcObject = stream; }} 
+                />
+                <div className="absolute bottom-3 left-3 bg-black/65 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-semibold text-white">
+                  {id.slice(0, 8)}
+                </div>
+                {raisedHands.has(id) && (
+                  <div className="absolute top-3 right-3">
+                    <HandRaised className="w-6 h-6 text-warning" />
+                  </div>
+                )}
+              </Card>
             ))}
+
+            {/* Screen Share */}
+            {isSharingScreen && (
+              <Card className="relative overflow-hidden aspect-video p-0 border-2 border-primary">
+                <video ref={screenVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+                <div className="absolute bottom-3 left-3 bg-black/65 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-semibold text-white">
+                  Your Screen
+                </div>
+              </Card>
+            )}
           </div>
 
-          <div style={styles.sideContent}>
+          {/* Controls */}
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              onClick={toggleMic} 
+              variant={micEnabled ? "primary" : "ghost"}
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              {micEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+              {micEnabled ? "Mic" : "Muted"}
+            </Button>
+            <Button 
+              onClick={toggleCamera} 
+              variant={cameraEnabled ? "primary" : "ghost"}
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              {cameraEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+              {cameraEnabled ? "Camera" : "Off"}
+            </Button>
+            {!isSharingScreen ? (
+              <Button onClick={startScreenShare} variant="accent" size="sm" className="flex items-center gap-2">
+                <Monitor className="w-4 h-4" />
+                Share
+              </Button>
+            ) : (
+              <Button onClick={stopScreenShare} variant="danger" size="sm" className="flex items-center gap-2">
+                <MonitorOff className="w-4 h-4" />
+                Stop
+              </Button>
+            )}
+            {isHost && !isRecording && (
+              <Button onClick={startRecording} variant="primary" size="sm" className="flex items-center gap-2">
+                <Radio className="w-4 h-4" />
+                Record
+              </Button>
+            )}
+            {isHost && isRecording && (
+              <Button onClick={stopRecording} variant="danger" size="sm" className="flex items-center gap-2">
+                <Radio className="w-4 h-4" />
+                Save
+              </Button>
+            )}
+            <Button 
+              onClick={toggleHand} 
+              variant={handRaised ? "warning" : "ghost"}
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              <Hand className="w-4 h-4" />
+              {handRaised ? "Lower" : "Raise Hand"}
+            </Button>
+            {isHost && (
+              <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-secondary/20 text-secondary hover:bg-secondary/30 cursor-pointer transition-colors text-sm font-semibold">
+                <FileText className="w-4 h-4" />
+                Share Files
+                <input type="file" accept="image/*,.pdf" multiple onChange={handleFileUpload} className="hidden" />
+              </label>
+            )}
+            {isHost && (
+              <Button onClick={() => setShowBreakout(true)} variant="primary" size="sm" className="flex items-center gap-2">
+                <MoreVertical className="w-4 h-4" />
+                Breakout Rooms
+              </Button>
+            )}
+          </div>
+
+          {/* Reactions */}
+          <div className="flex flex-wrap gap-2">
+            {REACTIONS.map((emoji) => (
+              <motion.button
+                key={emoji}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => sendReaction(emoji)}
+                className="w-11 h-11 rounded-full bg-surface border border-white/10 text-xl flex items-center justify-center hover:bg-white/10 transition-colors"
+              >
+                {emoji}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <div className={`${mobile ? (showSidebar ? 'fixed inset-0 z-50' : 'hidden') : 'w-80'} bg-surface border-l border-white/10 flex flex-col`}>
+          {mobile && (
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <span className="font-semibold">Chat & Participants</span>
+              <button onClick={() => setShowSidebar(false)} className="p-2 rounded-lg hover:bg-white/10">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+          
+          <Tabs tabs={tabData} activeTab={activeTab} onTabChange={setActiveTab} />
+
+          <div className="flex-1 overflow-auto p-4">
             {activeTab === "chat" && (
               <>
-                {messages.length === 0 && <p style={{ color: "#4b5563", fontSize: "0.85rem" }}>No messages yet.</p>}
-                {messages.map((m, i) => <div key={i} style={styles.chatMsg}><span style={styles.chatSender}>{m.sender}</span>{m.text}</div>)}
+                {messages.length === 0 && (
+                  <p className="text-text-muted text-sm text-center py-8">No messages yet.</p>
+                )}
+                {messages.map((m, i) => (
+                  <div key={i} className="mb-3 text-sm leading-relaxed">
+                    <span className="text-primary font-semibold mr-2">{m.sender}</span>
+                    <span className="text-text-secondary">{m.text}</span>
+                  </div>
+                ))}
                 <div ref={chatEndRef} />
               </>
             )}
             {activeTab === "participants" && (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                <li style={{ padding: "8px 0", fontSize: "0.88rem", color: "#4ade80", borderBottom: "1px solid #23262f" }}>👤 You {isHost ? "👑" : ""} {handRaised ? "✋" : ""}</li>
+              <ul className="space-y-2">
+                <li className="flex items-center gap-2 p-2 rounded-lg bg-secondary/10 text-secondary text-sm">
+                  <Users className="w-4 h-4" />
+                  <span className="font-medium">You</span>
+                  {isHost && <Crown className="w-4 h-4 text-warning" />}
+                  {handRaised && <HandRaised className="w-4 h-4" />}
+                </li>
                 {participants.map((id) => (
-                  <li key={id} style={{ padding: "8px 0", fontSize: "0.88rem", color: "#d1d5db", borderBottom: "1px solid #1f2937" }}>👤 {id.slice(0, 12)}… {raisedHands.has(id) ? "✋" : ""}</li>
+                  <li key={id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 text-text-primary text-sm">
+                    <Users className="w-4 h-4 text-text-muted" />
+                    <span>{id.slice(0, 12)}…</span>
+                    {raisedHands.has(id) && <HandRaised className="w-4 h-4 text-warning" />}
+                  </li>
                 ))}
               </ul>
             )}
             {activeTab === "files" && (
               <div>
-                {slides.length === 0
-                  ? <p style={{ color: "#4b5563", fontSize: "0.85rem" }}>{isHost ? "Use Share Files to present." : "No files shared yet."}</p>
-                  : <div><p style={{ fontSize: "0.85rem", color: "#9ca3af", marginBottom: "12px" }}>{slides.length} file(s) · Slide {slideIndex + 1}/{slides.length}</p><button onClick={() => setShowSlides(true)} style={styles.btn("#4f46e5")}>▶ View</button></div>
-                }
+                {slides.length === 0 ? (
+                  <p className="text-text-muted text-sm text-center py-8">
+                    {isHost ? "Use Share Files to present." : "No files shared yet."}
+                  </p>
+                ) : (
+                  <div className="text-center">
+                    <p className="text-text-secondary text-sm mb-4">
+                      {slides.length} file(s) · Slide {slideIndex + 1}/{slides.length}
+                    </p>
+                    <Button onClick={() => setShowSlides(true)} variant="primary" size="sm">
+                      View Slides
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {activeTab === "chat" && (
-            <div style={styles.chatInput}>
-              <input value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendMessage()} placeholder="Type a message…" style={styles.input} />
-              <button onClick={sendMessage} style={styles.sendBtn}>→</button>
+            <div className="p-4 border-t border-white/10 flex gap-2">
+              <Input
+                value={messageInput}
+                onChange={(e) => setMessageInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                placeholder="Type a message…"
+                className="flex-1"
+              />
+              <Button onClick={sendMessage} size="sm">
+                <Send className="w-4 h-4" />
+              </Button>
             </div>
           )}
         </div>
       </div>
 
+      {/* Mobile Chat FAB */}
       {mobile && !showSidebar && (
-        <button style={styles.chatFab} onClick={() => setShowSidebar(true)}>
-          💬
-          {messages.length > 0 && <span style={{ position: "absolute", top: 2, right: 2, background: "#ef4444", borderRadius: "50%", width: 16, height: 16, fontSize: "0.65rem", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{messages.length > 9 ? "9+" : messages.length}</span>}
+        <button 
+          onClick={() => setShowSidebar(true)}
+          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-primary text-white shadow-lg shadow-primary/30 flex items-center justify-center text-2xl z-40"
+        >
+          <MessageSquare className="w-6 h-6" />
+          {messages.length > 0 && (
+            <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-danger text-white text-xs font-bold flex items-center justify-center">
+              {messages.length > 9 ? "9+" : messages.length}
+            </span>
+          )}
         </button>
       )}
 
+      {/* Slides Modal */}
       {showSlides && slides.length > 0 && (
-        <div style={styles.slideBox}>
-          <img src={slides[slideIndex]} alt={`Slide ${slideIndex + 1}`} style={{ maxWidth: "90vw", maxHeight: "80vh", objectFit: "contain", borderRadius: "8px" }} />
-          <div style={{ display: "flex", gap: "16px", marginTop: "20px", alignItems: "center" }}>
-            <button onClick={() => navigateSlide(-1)} disabled={slideIndex === 0} style={{ ...styles.btn("#4f46e5"), opacity: slideIndex === 0 ? 0.4 : 1 }}>← Prev</button>
-            <span style={{ fontSize: "0.9rem", color: "#9ca3af" }}>{slideIndex + 1} / {slides.length}</span>
-            <button onClick={() => navigateSlide(1)} disabled={slideIndex === slides.length - 1} style={{ ...styles.btn("#4f46e5"), opacity: slideIndex === slides.length - 1 ? 0.4 : 1 }}>Next →</button>
-            {isHost && <button onClick={closeSlides} style={styles.btn("#dc2626")}>✕ Close</button>}
+        <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-4">
+          <img 
+            src={slides[slideIndex]} 
+            alt={`Slide ${slideIndex + 1}`} 
+            className="max-w-full max-h-[80vh] object-contain rounded-2xl"
+          />
+          <div className="flex items-center gap-4 mt-6">
+            <Button 
+              onClick={() => navigateSlide(-1)} 
+              disabled={slideIndex === 0}
+              variant="primary"
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Prev
+            </Button>
+            <span className="text-text-secondary text-sm">
+              {slideIndex + 1} / {slides.length}
+            </span>
+            <Button 
+              onClick={() => navigateSlide(1)} 
+              disabled={slideIndex === slides.length - 1}
+              variant="primary"
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            {isHost && (
+              <Button onClick={closeSlides} variant="danger" size="sm">
+                <X className="w-4 h-4" />
+                Close
+              </Button>
+            )}
           </div>
         </div>
       )}
 
-      {showBreakout && (
-        <div style={styles.modal}>
-          <div style={styles.modalBox}>
-            <h2 style={styles.modalTitle}>🏠 Breakout Rooms</h2>
-            {isHost && breakoutRooms.length === 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div><label style={{ fontSize: "0.85rem", color: "#9ca3af" }}>Number of rooms (2–10)</label><input type="number" min={2} max={10} value={numRooms} onChange={(e) => setNumRooms(Number(e.target.value))} style={{ ...styles.input, display: "block", marginTop: "6px", width: "100px" }} /></div>
-                <div><label style={{ fontSize: "0.85rem", color: "#9ca3af" }}>Duration (minutes)</label><input type="number" min={1} max={60} value={breakoutDuration} onChange={(e) => setBreakoutDuration(Number(e.target.value))} style={{ ...styles.input, display: "block", marginTop: "6px", width: "100px" }} /></div>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button onClick={createBreakoutRooms} style={styles.btn("#9333ea")}>Create Rooms</button>
-                  <button onClick={() => setShowBreakout(false)} style={styles.btn("#374151")}>Cancel</button>
-                </div>
-              </div>
-            )}
-            {breakoutRooms.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {breakoutTimer > 0 && <div style={{ fontSize: "0.9rem", color: "#fbbf24", fontWeight: 700 }}>⏱ {fmt(Math.floor(breakoutTimer / 60))}:{fmt(breakoutTimer % 60)} remaining</div>}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  {breakoutRooms.map((room, i) => (
-                    <div key={room.id} style={{ background: myBreakoutRoom === room.id ? "#312e81" : "#23262f", borderRadius: "10px", padding: "12px", fontSize: "0.85rem" }}>
-                      <div style={{ fontWeight: 700, marginBottom: "4px" }}>Room {i + 1}</div>
-                      <div style={{ color: "#9ca3af" }}>{room.members?.length || 0} participant(s)</div>
-                    </div>
-                  ))}
-                </div>
-                {!isHost && !myBreakoutRoom && (
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <input type="number" min={1} max={breakoutRooms.length} value={breakoutInput} onChange={(e) => setBreakoutInput(e.target.value)} placeholder={`Room # (1–${breakoutRooms.length})`} style={{ ...styles.input, width: "160px" }} />
-                    <button onClick={joinBreakoutRoom} style={styles.btn("#9333ea")}>Join</button>
-                  </div>
-                )}
-                {myBreakoutRoom && !isHost && <p style={{ color: "#4ade80", fontSize: "0.88rem" }}>✅ Room {breakoutRooms.findIndex(r => r.id === myBreakoutRoom) + 1}</p>}
-                <div style={{ display: "flex", gap: "10px" }}>
-                  {isHost && <button onClick={endBreakoutRooms} style={styles.btn("#dc2626")}>End All</button>}
-                  <button onClick={() => setShowBreakout(false)} style={styles.btn("#374151")}>Close</button>
-                </div>
-              </div>
-            )}
+      {/* Breakout Rooms Modal */}
+      <Modal
+        isOpen={showBreakout}
+        onClose={() => setShowBreakout(false)}
+        title="Breakout Rooms"
+        size="md"
+      >
+        {isHost && breakoutRooms.length === 0 && (
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-semibold text-text-secondary mb-2 block">Number of rooms (2–10)</label>
+              <Input 
+                type="number" 
+                min={2} 
+                max={10} 
+                value={numRooms} 
+                onChange={(e) => setNumRooms(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-text-secondary mb-2 block">Duration (minutes)</label>
+              <Input 
+                type="number" 
+                min={1} 
+                max={60} 
+                value={breakoutDuration} 
+                onChange={(e) => setBreakoutDuration(Number(e.target.value))}
+              />
+            </div>
+            <div className="flex gap-3">
+              <Button onClick={createBreakoutRooms} className="flex-1">
+                Create Rooms
+              </Button>
+              <Button onClick={() => setShowBreakout(false)} variant="ghost" className="flex-1">
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+        {breakoutRooms.length > 0 && (
+          <div className="space-y-4">
+            {breakoutTimer > 0 && (
+              <div className="flex items-center gap-2 text-warning font-semibold">
+                <Clock className="w-4 h-4" />
+                {fmt(Math.floor(breakoutTimer / 60))}:{fmt(breakoutTimer % 60)} remaining
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              {breakoutRooms.map((room, i) => (
+                <div 
+                  key={room.id} 
+                  className={`p-4 rounded-xl ${
+                    myBreakoutRoom === room.id 
+                      ? 'bg-primary/20 border border-primary/50' 
+                      : 'bg-surface border border-white/10'
+                  }`}
+                >
+                  <div className="font-semibold mb-1">Room {i + 1}</div>
+                  <div className="text-text-secondary text-sm">{room.members?.length || 0} participant(s)</div>
+                </div>
+              ))}
+            </div>
+            {!isHost && !myBreakoutRoom && (
+              <div className="flex gap-3 items-center">
+                <Input 
+                  type="number" 
+                  min={1} 
+                  max={breakoutRooms.length} 
+                  value={breakoutInput} 
+                  onChange={(e) => setBreakoutInput(e.target.value)}
+                  placeholder={`Room # (1–${breakoutRooms.length})`}
+                  className="w-40"
+                />
+                <Button onClick={joinBreakoutRoom} variant="primary">
+                  Join
+                </Button>
+              </div>
+            )}
+            {myBreakoutRoom && !isHost && (
+              <p className="text-secondary font-semibold">
+                ✓ Room {breakoutRooms.findIndex(r => r.id === myBreakoutRoom) + 1}
+              </p>
+            )}
+            <div className="flex gap-3">
+              {isHost && (
+                <Button onClick={endBreakoutRooms} variant="danger">
+                  End All
+                </Button>
+              )}
+              <Button onClick={() => setShowBreakout(false)} variant="ghost">
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Video, Calendar, Clock, Copy, RefreshCw, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
 
 function MeetingsList() {
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [copiedCode, setCopiedCode] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchMeetings();
   }, []);
 
-  // Auto-refresh every 30 seconds to update active status & joined state
   useEffect(() => {
     const interval = setInterval(fetchMeetings, 30000);
     return () => clearInterval(interval);
@@ -29,7 +33,7 @@ function MeetingsList() {
     setError('');
 
     try {
-      const res = await fetch('/api/meetings', {
+      const res = await fetch('http://localhost:5000/api/meetings', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -66,7 +70,7 @@ function MeetingsList() {
     }
 
     try {
-      const res = await fetch(`/api/meetings/join/${code}`, {
+      const res = await fetch(`http://localhost:5000/api/meetings/join/${code}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,14 +90,18 @@ function MeetingsList() {
         return;
       }
 
-      // Success – go to the main meeting room
       navigate(`/meeting/${code}`);
     } catch (err) {
       alert('Error joining meeting. Please try again.');
     }
   };
 
-  // Check if the meeting is currently active (between start and end time on the same day)
+  const copyCode = (code) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
+
   const isMeetingActive = useCallback((meeting) => {
     const now = new Date();
     const meetingDay = new Date(meeting.meeting_date);
@@ -109,7 +117,6 @@ function MeetingsList() {
     );
   }, []);
 
-  // Format date nicely
   const formatDate = (dateStr) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
       weekday: 'short',
@@ -119,7 +126,6 @@ function MeetingsList() {
     });
   };
 
-  // Format time (HH:MM only)
   const formatTime = (timeStr) => {
     if (!timeStr) return '--:--';
     const date = new Date(`1970-01-01T${timeStr}`);
@@ -128,147 +134,122 @@ function MeetingsList() {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px' }}>
-        Loading meetings...
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-text-secondary">Loading meetings...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px', color: 'red' }}>
-        <h3>Error: {error}</h3>
-        <button
-          onClick={fetchMeetings}
-          style={{
-            marginTop: '20px',
-            padding: '10px 20px',
-            background: '#6C63FF',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Try Again
-        </button>
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Card className="text-center max-w-md">
+          <h3 className="text-xl font-semibold text-danger mb-4">Error: {error}</h3>
+          <Button onClick={fetchMeetings}>Try Again</Button>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '30px', textAlign: 'center' }}>Available Meetings</h1>
+    <div className="space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex items-center justify-between"
+      >
+        <div>
+          <h1 className="text-3xl font-bold text-text-primary font-display mb-2">Available Meetings</h1>
+          <p className="text-text-secondary">Join or manage your scheduled meetings</p>
+        </div>
+        <Button onClick={fetchMeetings} variant="ghost" size="sm">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh
+        </Button>
+      </motion.div>
 
       {meetings.length === 0 ? (
-        <p style={{ textAlign: 'center', color: '#666' }}>
-          No upcoming meetings found.
-        </p>
+        <Card className="text-center py-12">
+          <Video className="w-16 h-16 text-text-muted mx-auto mb-4" />
+          <p className="text-text-secondary">No upcoming meetings found.</p>
+        </Card>
       ) : (
-        <div style={{ display: 'grid', gap: '24px' }}>
-          {meetings.map((m) => {
+        <div className="grid gap-4">
+          {meetings.map((m, index) => {
             const active = isMeetingActive(m);
 
             return (
-              <div
+              <motion.div
                 key={m.id}
-                style={{
-                  border: '1px solid #ddd',
-                  borderRadius: '12px',
-                  padding: '24px',
-                  background: '#fff',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
               >
-                <h3 style={{ margin: '0 0 12px', color: '#333' }}>{m.title}</h3>
+                <Card hover>
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-semibold text-text-primary font-display mb-3">{m.title}</h3>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-text-secondary">
+                          <Calendar className="w-4 h-4" />
+                          <span>{formatDate(m.meeting_date)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-text-secondary">
+                          <Clock className="w-4 h-4" />
+                          <span>{formatTime(m.start_time)} – {formatTime(m.end_time)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-text-secondary font-medium">Code:</span>
+                          <code className="bg-surface px-3 py-1 rounded-lg text-primary font-mono">{m.meeting_code}</code>
+                          <Button
+                            onClick={() => copyCode(m.meeting_code)}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2"
+                          >
+                            {copiedCode === m.meeting_code ? (
+                              <CheckCircle2 className="w-4 h-4 text-secondary" />
+                            ) : (
+                              <Copy className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
 
-                <p style={{ margin: '6px 0' }}>
-                  <strong>Date:</strong> {formatDate(m.meeting_date)}
-                </p>
-
-                <p style={{ margin: '6px 0' }}>
-                  <strong>Time:</strong> {formatTime(m.start_time)} – {formatTime(m.end_time)}
-                </p>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '12px 0' }}>
-                  <span>
-                    <strong>Code:</strong> <code style={{ fontSize: '1.15em' }}>{m.meeting_code}</code>
-                  </span>
-
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(m.meeting_code);
-                      alert('Meeting code copied to clipboard!');
-                    }}
-                    style={{
-                      padding: '6px 14px',
-                      background: '#f0f8ff',
-                      color: '#0066cc',
-                      border: '1px solid #99ccff',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '0.95em',
-                    }}
-                  >
-                    Copy Code
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => joinMeeting(m.meeting_code)}
-                  disabled={!active}
-                  style={{
-                    width: '100%',
-                    padding: '14px',
-                    backgroundColor: !active ? '#cccccc' : m.isJoined ? '#4CAF50' : '#6C63FF',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: !active ? 'not-allowed' : 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '1.1em',
-                    marginTop: '16px',
-                  }}
-                >
-                  {m.isJoined ? 'Rejoin Meeting' : !active ? 'Meeting Not Active' : 'Join Meeting'}
-                </button>
-              </div>
+                    <div className="flex sm:flex-col gap-3 sm:min-w-[200px]">
+                      <Button
+                        onClick={() => joinMeeting(m.meeting_code)}
+                        disabled={!active}
+                        variant={m.isJoined ? 'secondary' : 'primary'}
+                        className="w-full sm:w-auto"
+                      >
+                        {m.isJoined ? 'Rejoin Meeting' : !active ? 'Meeting Not Active' : 'Join Meeting'}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
             );
           })}
         </div>
       )}
 
-      <div style={{ textAlign: 'center', marginTop: '50px' }}>
-        <button
-          onClick={() => navigate(-1)}
-          style={{
-            padding: '12px 28px',
-            background: '#f5f5f5',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '1.05em',
-            marginRight: '15px',
-          }}
-        >
-          ← Back to Dashboard
-        </button>
-
-        <button
-          onClick={fetchMeetings}
-          style={{
-            padding: '12px 28px',
-            background: '#6C63FF',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '1.05em',
-          }}
-        >
-          Refresh List
-        </button>
-      </div>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        className="flex justify-center gap-4 pt-4"
+      >
+        <Button onClick={() => navigate('/Dashboard')} variant="ghost">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Dashboard
+        </Button>
+      </motion.div>
     </div>
   );
 }
