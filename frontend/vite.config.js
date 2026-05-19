@@ -24,4 +24,12 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    host: "0.0.0.0",
+    port: 9090,
+    allowedHosts: [
+      "units.jhubafrica.com",
+      "www.units.jhubafrica.com",
+    ],
+  },
 })
