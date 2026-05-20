@@ -19,7 +19,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      const response = await fetch("${import.meta.env.VITE_API_URL}/api/auth/login", {
+      const response = await fetch((import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -29,7 +29,7 @@ export default function Login() {
       catch { throw new Error("Invalid server response. Please try again."); }
       if (!response.ok) throw new Error(data?.message || "Login failed");
       localStorage.setItem("token", data.token);
-      navigate("/Dashboard");
+      navigate("/app/dashboard");
     } catch (err) {
       setError(err.message);
     } finally {

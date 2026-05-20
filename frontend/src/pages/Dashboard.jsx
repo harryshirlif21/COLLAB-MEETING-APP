@@ -33,7 +33,7 @@ function Dashboard() {
 
     fetchStats(token);
 
-    socketRef.current = io("${import.meta.env.VITE_API_URL}", {
+    socketRef.current = io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
       auth: { token },
       transports: ["websocket"],
     });
@@ -46,7 +46,7 @@ function Dashboard() {
 
   const fetchStats = async (token) => {
     try {
-      const res = await fetch("${import.meta.env.VITE_API_URL}/api/logs/stats", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api/logs/stats", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -69,7 +69,7 @@ function Dashboard() {
     setMeetingError("");
 
     try {
-      const res = await fetch("${import.meta.env.VITE_API_URL}/api/meetings", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({

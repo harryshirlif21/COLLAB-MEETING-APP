@@ -40,7 +40,7 @@ export default function Profile() {
 
   const fetchProfile = async (token) => {
     try {
-      const res = await fetch("${import.meta.env.VITE_API_URL}/api/profile", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api/profile", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -71,7 +71,7 @@ export default function Profile() {
     const token = localStorage.getItem("token");
     setSaving(true);
     try {
-      const res = await fetch("${import.meta.env.VITE_API_URL}/api/profile", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name, timezone, avatar }),
@@ -89,7 +89,7 @@ export default function Profile() {
     const token = localStorage.getItem("token");
     setSaving(true);
     try {
-      const res = await fetch("${import.meta.env.VITE_API_URL}/api/profile/password", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api/profile/password", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
@@ -105,7 +105,7 @@ export default function Profile() {
     const token = localStorage.getItem("token");
     setSaving(true);
     try {
-      const res = await fetch("${import.meta.env.VITE_API_URL}/api/profile/email-prefs", {
+      const res = await fetch((import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api/profile/email-prefs", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ emailPrefs }),
