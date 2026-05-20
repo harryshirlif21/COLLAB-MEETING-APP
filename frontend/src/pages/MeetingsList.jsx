@@ -33,7 +33,7 @@ function MeetingsList() {
     setError('');
 
     try {
-      const res = await fetch('http://localhost:5000/api/meetings', {
+      const res = await fetch('${import.meta.env.VITE_API_URL}/api/meetings', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -70,7 +70,7 @@ function MeetingsList() {
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/meetings/join/${code}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/meetings/join/${code}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

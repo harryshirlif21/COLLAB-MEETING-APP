@@ -115,7 +115,7 @@ export default function MeetingRoom() {
     } catch {}
 
     // ✅ Connect to same origin — Nginx proxies /socket.io/ to backend:5000
-    const socket = io("http://localhost:5000", { auth: { token } });
+    const socket = io("${import.meta.env.VITE_API_URL}", { auth: { token } });
     socketRef.current = socket;
 
     socket.on("connect",       () => console.log("[SOCKET] Connected:", socket.id));
