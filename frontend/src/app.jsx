@@ -22,6 +22,7 @@ function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/meeting/:code" element={<MeetingRoom />} />
         <Route path="/app" element={
           <PrivateRoute>
             <AppLayout />
