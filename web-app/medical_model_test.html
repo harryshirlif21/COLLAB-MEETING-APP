@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medical AI Model Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f7f9fc; color: #20232a; padding: 24px; }
+    .container { max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 12px 24px rgba(0,0,0,0.08); }
+    h1 { font-size: 1.8rem; margin-bottom: 12px; }
+    label { display: block; margin-bottom: 8px; font-weight: 600; }
+    input[type=file] { width: 100%; padding: 10px; }
+    button { margin-top: 16px; padding: 12px 18px; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-size: 1rem; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .status { margin-top: 18px; padding: 16px; background: #f3f4f6; border-radius: 10px; line-height: 1.5; }
+    pre { background: #111827; color: #f8fafc; padding: 14px; border-radius: 10px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Medical AI Model Test</h1>
+    <p>Select an image file and submit it to the Medical AI Gateway at <code>http://localhost:8000/submit</code>.</p>
+
+    <label for="imageInput">Choose image</label>
+    <input id="imageInput" type="file" accept="image/*" />
+
+    <button id="submitButton">Run Model</button>
+
+    <div class="status" id="statusMessage">
+      No file selected.
+    </div>
+    <pre id="resultOutput"></pre>
+  </div>
+
+  <script src="medical_model_test.js"></script>
+</body>
+</html>
