@@ -6,29 +6,58 @@
   <title>Medical AI Model Test</title>
   <style>
     body { font-family: Arial, sans-serif; background: #f7f9fc; color: #20232a; padding: 24px; }
-    .container { max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 12px 24px rgba(0,0,0,0.08); }
+    .container { max-width: 760px; margin: 0 auto; background: #ffffff; border-radius: 8px; padding: 24px; box-shadow: 0 12px 24px rgba(0,0,0,0.08); }
     h1 { font-size: 1.8rem; margin-bottom: 12px; }
     label { display: block; margin-bottom: 8px; font-weight: 600; }
-    input[type=file] { width: 100%; padding: 10px; }
+    input[type=file], input[type=password], input[type=url], input[type=text] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; }
+    .field { margin-top: 16px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 16px; }
     button { margin-top: 16px; padding: 12px 18px; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-size: 1rem; cursor: pointer; }
+    .actions button { margin-top: 0; }
+    #deployButton, #diagnosticsButton { background: #0f766e; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
     .status { margin-top: 18px; padding: 16px; background: #f3f4f6; border-radius: 10px; line-height: 1.5; }
+    .error { display: none; margin-top: 18px; padding: 16px; border: 1px solid #fecaca; border-left: 5px solid #dc2626; background: #fef2f2; color: #7f1d1d; border-radius: 8px; line-height: 1.5; }
+    .error h2 { margin: 0 0 8px; font-size: 1.05rem; }
+    .muted { color: #4b5563; font-size: 0.92rem; }
     pre { background: #111827; color: #f8fafc; padding: 14px; border-radius: 10px; overflow-x: auto; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Medical AI Model Test</h1>
-    <p>Select an image file and submit it to the Medical AI Gateway at <code>http://localhost:8000/submit</code>.</p>
+    <p>Select an image file and submit it to the online JHub Medical AI Gateway at <code id="endpointLabel"></code>.</p>
 
-    <label for="imageInput">Choose image</label>
-    <input id="imageInput" type="file" accept="image/*" />
+    <div class="field">
+      <label for="endpointInput">Gateway endpoint</label>
+      <input id="endpointInput" type="url" />
+      <div class="muted">Change this if your JHub route uses a different path.</div>
+    </div>
 
-    <button id="submitButton">Run Model</button>
+    <div class="field">
+      <label for="imageInput">Choose image</label>
+      <input id="imageInput" type="file" accept="image/*" />
+    </div>
+
+    <div class="actions">
+      <button id="submitButton">Run Model</button>
+      <button id="diagnosticsButton">Run Diagnostics</button>
+    </div>
+
+    <div class="field">
+      <label for="githubTokenInput">GitHub token for model Docker Hub workflow</label>
+      <input id="githubTokenInput" type="password" autocomplete="off" placeholder="Fine-grained token with Actions: write" />
+      <div class="muted">Used only in this browser request. Do not commit tokens into this file.</div>
+    </div>
+
+    <div class="actions">
+      <button id="deployButton">Install and Load Model to Docker Hub</button>
+    </div>
 
     <div class="status" id="statusMessage">
       No file selected.
     </div>
+    <div class="error" id="errorDetail" role="alert" aria-live="polite"></div>
     <pre id="resultOutput"></pre>
   </div>
 
