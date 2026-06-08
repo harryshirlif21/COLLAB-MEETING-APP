@@ -23,7 +23,7 @@ else
   done
 fi
 
-git add .github/workflows/build-push.yml
+git add .github/workflows/main.yml
 git status --short
 
 git commit -m "Add Medical AI Docker image CI pipeline"
