@@ -3,7 +3,7 @@ const submitButton = document.getElementById('submitButton');
 const statusMessage = document.getElementById('statusMessage');
 const resultOutput = document.getElementById('resultOutput');
 
-const gatewayUrl = 'http://localhost:8000/submit';
+const gatewayUrl = new URL('/submit', window.location.origin).toString();
 
 function setStatus(text, isError = false) {
   statusMessage.textContent = text;

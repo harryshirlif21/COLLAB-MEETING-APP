@@ -4,6 +4,7 @@ from fastapi import (
     File,
     HTTPException
 )
+from fastapi.middleware.cors import CORSMiddleware
 
 from services import (
     check_services,
@@ -16,6 +17,14 @@ from logger import logger
 app = FastAPI(
     title="Medical AI Gateway",
     version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
