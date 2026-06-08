@@ -1,0 +1,86 @@
+services:
+  gateway:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME in .env}/medical-gateway:latest
+    container_name: medical_gateway
+    environment:
+      INGESTION_URL: http://ingestion:8001
+      OCR_URL: http://ocr:8002
+      DETECTION_URL: http://detection:8003
+      SCORING_URL: http://scoring:8004
+      EXPLAINABILITY_URL: http://explainability:8005
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-300}
+    ports:
+      - "${GATEWAY_PUBLIC_PORT:-8000}:8000"
+    depends_on:
+      - ingestion
+      - ocr
+      - detection
+      - scoring
+      - explainability
+    restart: unless-stopped
+    networks:
+      - medical-net
+
+  ingestion:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME in .env}/medical-ingestion:latest
+    container_name: medical_ingestion
+    environment:
+      STORAGE_PATH: /app/STORAGE
+    volumes:
+      # Shared storage keeps generated PDF pages visible to downstream services.
+      - medical-storage:/app/STORAGE
+    restart: unless-stopped
+    networks:
+      - medical-net
+
+  ocr:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME in .env}/medical-ocr:latest
+    container_name: medical_ocr
+    environment:
+      STORAGE_PATH: /app/STORAGE
+      TESSERACT_CONFIG: ${TESSERACT_CONFIG:---oem 3 --psm 6}
+      MIN_CONFIDENCE: ${MIN_CONFIDENCE:-70}
+    volumes:
+      - medical-storage:/app/STORAGE
+    restart: unless-stopped
+    networks:
+      - medical-net
+
+  detection:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME in .env}/medical-detection:latest
+    container_name: medical_detection
+    volumes:
+      - medical-storage:/app/STORAGE
+    restart: unless-stopped
+    networks:
+      - medical-net
+
+  scoring:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME in .env}/medical-scoring:latest
+    container_name: medical_scoring
+    restart: unless-stopped
+    networks:
+      - medical-net
+
+  explainability:
+    image: ${DOCKERHUB_USERNAME:?Set DOCKERHUB_USERNAME in .env}/medical-explainability:latest
+    container_name: medical_explainability
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      OUTPUT_DIR: /app/outputs/explainability
+    volumes:
+      - medical-storage:/app/STORAGE
+      - explainability-output:/app/outputs/explainability
+    restart: unless-stopped
+    networks:
+      - medical-net
+
+networks:
+  medical-net:
+    name: medical-net
+    driver: bridge
+
+volumes:
+  medical-storage:
+  explainability-output:
