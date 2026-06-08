@@ -15,6 +15,8 @@ const GH_OWNER = 'harryshirlif21';
 const GH_REPO = 'COLLAB-MEETING-APP';
 const GH_WORKFLOW_ID = 'main.yml';
 const GH_REF = 'main';
+const GH_API_BASE = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}`;
+const GH_ACTIONS_URL = `https://github.com/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW_ID}`;
 
 const savedEndpoint = localStorage.getItem('medicalAiGatewayEndpoint') || DEFAULT_JHUB_ENDPOINT;
 endpointInput.value = savedEndpoint;
@@ -58,6 +60,40 @@ const readResponseBody = async (response) => {
     } catch (_) {
         return text;
     }
+};
+
+const getGitHubHeaders = (token) => ({
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'X-GitHub-Api-Version': '2022-11-28',
+});
+
+const ensureGitHubWorkflowIsReachable = async (token) => {
+    const endpoint = `${GH_API_BASE}/actions/workflows/${encodeURIComponent(GH_WORKFLOW_ID)}`;
+    const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: getGitHubHeaders(token),
+    });
+    const body = await readResponseBody(response);
+
+    if (!response.ok) {
+        const error = new Error(`GitHub workflow lookup failed: ${response.status} ${response.statusText}`);
+        error.endpoint = endpoint;
+        error.status = `${response.status} ${response.statusText}`;
+        error.responseBody = body;
+        throw error;
+    }
+
+    if (body.state && body.state !== 'active') {
+        const error = new Error(`GitHub workflow is ${body.state}, not active.`);
+        error.endpoint = endpoint;
+        error.status = 'Workflow inactive';
+        error.responseBody = body;
+        throw error;
+    }
+
+    return body;
 };
 
 const showError = ({ title = 'Request failed', message, endpoint, method, status, responseBody, hint, error }) => {
@@ -238,9 +274,21 @@ deployButton.addEventListener('click', async () => {
         showError({
             title: 'GitHub token required',
             message: 'A browser cannot trigger workflow_dispatch without an authenticated GitHub API request.',
-            endpoint: `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW_ID}/dispatches`,
+            endpoint: `${GH_API_BASE}/actions/workflows/${GH_WORKFLOW_ID}/dispatches`,
             method: 'POST',
             hint: 'Use a fine-grained token scoped to this repository with Actions: write. The token stays in this browser request and is not saved.',
+        });
+        return;
+    }
+
+    if (!token.startsWith('github_pat_') && !token.startsWith('ghp_')) {
+        setStatus('That does not look like a GitHub access token.', true);
+        showError({
+            title: 'GitHub token looks invalid',
+            message: 'Paste a GitHub fine-grained token or classic PAT before installing the model.',
+            endpoint: `${GH_API_BASE}/actions/workflows/${GH_WORKFLOW_ID}/dispatches`,
+            method: 'POST',
+            hint: 'Fine-grained tokens usually start with github_pat_. Classic tokens usually start with ghp_.',
         });
         return;
     }
@@ -248,21 +296,19 @@ deployButton.addEventListener('click', async () => {
     if (!confirm('This will trigger GitHub Actions to build the Medical AI images and push them to Docker Hub. Continue?')) return;
 
     clearError();
-    setStatus('Triggering Medical AI Docker Hub workflow...');
+    setStatus('Checking GitHub workflow access...');
     deployButton.disabled = true;
     setResult('');
 
-    const endpoint = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW_ID}/dispatches`;
+    const endpoint = `${GH_API_BASE}/actions/workflows/${encodeURIComponent(GH_WORKFLOW_ID)}/dispatches`;
 
     try {
+        const workflow = await ensureGitHubWorkflowIsReachable(token);
+        setStatus('Triggering Medical AI Docker Hub workflow...');
+
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: 'application/vnd.github+json',
-                'Content-Type': 'application/json',
-                'X-GitHub-Api-Version': '2022-11-28',
-            },
+            headers: getGitHubHeaders(token),
             body: JSON.stringify({
                 ref: GH_REF,
                 inputs: {
@@ -274,10 +320,13 @@ deployButton.addEventListener('click', async () => {
         if (response.status === 204) {
             setStatus('Workflow triggered. Check GitHub Actions for the Docker Hub build.');
             setResult({
+                status: 'triggered',
                 workflow: GH_WORKFLOW_ID,
+                workflowName: workflow.name,
                 ref: GH_REF,
                 repository: `${GH_OWNER}/${GH_REPO}`,
                 action: 'build-and-push-medical-model-images',
+                actionsUrl: GH_ACTIONS_URL,
             });
         } else {
             const body = await readResponseBody(response);
@@ -288,7 +337,7 @@ deployButton.addEventListener('click', async () => {
                 method: 'POST',
                 status: `${response.status} ${response.statusText}`,
                 responseBody: body,
-                hint: 'Confirm the token has Actions: write permission and the workflow has workflow_dispatch enabled on the selected ref.',
+                hint: 'Confirm the token has Actions: write permission, the repository/ref are correct, and workflow_dispatch is enabled on main.yml.',
             });
             setStatus('Failed to trigger Docker Hub workflow.', true);
             setResult({ error: `GitHub API returned ${response.status}`, details: body });
@@ -296,13 +345,16 @@ deployButton.addEventListener('click', async () => {
     } catch (err) {
         setStatus('Failed to trigger Docker Hub workflow.', true);
         showError({
-            title: 'GitHub workflow dispatch request failed',
+            title: err.status ? 'GitHub workflow request failed' : 'GitHub workflow dispatch request failed',
             message: err.message,
-            endpoint,
-            method: 'POST',
-            hint: 'Check connectivity to api.github.com and browser CORS/network restrictions.',
+            endpoint: err.endpoint || endpoint,
+            method: err.endpoint && err.endpoint !== endpoint ? 'GET' : 'POST',
+            status: err.status,
+            responseBody: err.responseBody,
+            hint: 'Check that the token has Actions: write and Metadata: read access for harryshirlif21/COLLAB-MEETING-APP, then open the Actions URL shown below.',
             error: err,
         });
+        setResult({ error: err.message, actionsUrl: GH_ACTIONS_URL, timestamp: new Date().toISOString() });
     } finally {
         deployButton.disabled = false;
     }
