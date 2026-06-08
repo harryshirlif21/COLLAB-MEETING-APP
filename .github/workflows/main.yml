@@ -154,6 +154,47 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
-      - name: Deploy to production server
+      - name: Deploy main app containers
         run: |
-          ssh ${{ secrets.SERVER_BOT }}@${{ secrets.SERVER_IP }}
+          ssh ${{ secrets.SERVER_BOT }}@${{ secrets.SERVER_IP }} << 'EOF'
+            set -e
+            # ── Login to Docker Hub (app account) ──
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            # ── Pull new app images ──
+            docker pull ${{ secrets.DOCKER_USERNAME }}/collab-meeting-app-frontend:latest
+            docker pull ${{ secrets.DOCKER_USERNAME }}/collab-meeting-app-backend:latest
+
+            # ── Recreate app containers ──
+            docker stop collab-frontend 2>/dev/null || true
+            docker rm collab-frontend 2>/dev/null || true
+            docker run -d \
+              --name collab-frontend \
+              --restart unless-stopped \
+              -p 9090:9090 \
+              --network collab-net \
+              ${{ secrets.DOCKER_USERNAME }}/collab-meeting-app-frontend:latest
+
+            docker stop collab-backend 2>/dev/null || true
+            docker rm collab-backend 2>/dev/null || true
+            docker run -d \
+              --name collab-backend \
+              --restart unless-stopped \
+              -p 5000:5000 \
+              --network collab-net \
+              -e DB_HOST=db \
+              -e DB_PORT=3306 \
+              -e DB_NAME=collab_db \
+              -e DB_USER=collab_user \
+              -e DB_PASSWORD=collab_pass \
+              -e JWT_SECRET=your_jwt_secret_here \
+              -e ALLOWED_ORIGINS=http://localhost:9090 \
+              ${{ secrets.DOCKER_USERNAME }}/collab-meeting-app-backend:latest
+
+            # ── Remove old images to free space ──
+            docker image prune -f
+          EOF
+
+      - name: Deploy Medical AI services
+        run: |
+          ssh ${{ secrets.SERVER_BOT }}@${{ secrets.SERVER_IP }} "cd ~/collab-meeting-app && echo 'DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}' > .env && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d && docker compose -f docker-compose.prod.yml ps"
